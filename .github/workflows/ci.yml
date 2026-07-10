@@ -105,11 +105,11 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Run frontend quality gates
-        run: npm run check
-
       - name: Build production assets
         run: npm run build
+
+      - name: Run frontend quality gates
+        run: npm run check
 
   browser-smoke:
     name: Browser smoke
