@@ -6,7 +6,7 @@ pre-commit:
       stage_fixed: true
     eslint:
       glob: '*.{js,jsx,ts,tsx}'
-      run: npx eslint --fix {staged_files}
+      run: npx eslint --fix --no-warn-ignored {staged_files}
       stage_fixed: true
     prettier:
       glob: '*.{css,js,jsx,json,ts,tsx,yaml,yml}'
