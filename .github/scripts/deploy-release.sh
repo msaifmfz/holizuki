@@ -149,12 +149,16 @@ fi
 
 successful=true
 
-retained=0
+retained=1
 while read -r _ release_directory; do
-    retained=$((retained + 1))
+    if [[ "$release_directory" == "$final_release" ]]; then
+        continue
+    fi
 
-    if (( retained > keep_releases )) && [[ "$release_directory" != "$final_release" ]]; then
+    if (( retained >= keep_releases )); then
         rm -rf -- "$release_directory"
+    else
+        retained=$((retained + 1))
     fi
 done < <(list_releases | sort -rn)
 
