@@ -13,6 +13,7 @@
         "resources/js/layouts/auth/{auth-card-layout,auth-split-layout}.tsx"
     ],
     "ignoreDependencies": [
+        "@fontsource/instrument-sans",
         "@radix-ui/react-collapsible",
         "@radix-ui/react-navigation-menu",
         "@radix-ui/react-select",
