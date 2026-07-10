@@ -1,0 +1,55 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "required": [
+        "nodeHostname",
+        "storageClass",
+        "clusterIssuer",
+        "postgres",
+        "monitoring",
+        "backup",
+        "environments"
+    ],
+    "properties": {
+        "nodeHostname": {
+            "type": "string",
+            "minLength": 1
+        },
+        "storageClass": {
+            "type": "object",
+            "required": ["name"]
+        },
+        "clusterIssuer": {
+            "type": "object",
+            "required": ["name", "email", "server"]
+        },
+        "postgres": {
+            "type": "object",
+            "required": [
+                "image",
+                "clusterName",
+                "database",
+                "owner",
+                "monitoringEnabled"
+            ]
+        },
+        "monitoring": {
+            "type": "object",
+            "required": ["enabled"]
+        },
+        "backup": {
+            "type": "object",
+            "required": [
+                "enabled",
+                "destinationPath",
+                "credentialsSecretName",
+                "schedule",
+                "retentionPolicy"
+            ]
+        },
+        "environments": {
+            "type": "object",
+            "required": ["production", "staging"]
+        }
+    }
+}

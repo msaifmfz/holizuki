@@ -1,0 +1,45 @@
+{{- if .Values.scheduler.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "holizuki.fullname" . }}-scheduler
+  labels:
+    {{- include "holizuki.labels" . | nindent 4 }}
+    app.kubernetes.io/component: scheduler
+spec:
+  schedule: {{ .Values.scheduler.schedule | quote }}
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 1
+  startingDeadlineSeconds: 30
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 55
+      backoffLimit: 0
+      ttlSecondsAfterFinished: 300
+      template:
+        metadata:
+          labels:
+            {{- include "holizuki.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: scheduler
+        spec:
+          automountServiceAccountToken: false
+          {{- include "holizuki.imagePullSecrets" . | nindent 10 }}
+          serviceAccountName: {{ include "holizuki.serviceAccountName" . }}
+          restartPolicy: Never
+          securityContext:
+            {{- include "holizuki.podSecurityContext" . | nindent 12 }}
+          containers:
+            - name: scheduler
+              image: {{ include "holizuki.image" . }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              args:
+                - scheduler
+              securityContext:
+                {{- include "holizuki.containerSecurityContext" . | nindent 16 }}
+              {{- include "holizuki.env" . | nindent 14 }}
+              resources:
+                {{- toYaml .Values.scheduler.resources | nindent 16 }}
+              {{- include "holizuki.volumeMounts" . | nindent 14 }}
+          {{- include "holizuki.volumes" . | nindent 10 }}
+{{- end }}

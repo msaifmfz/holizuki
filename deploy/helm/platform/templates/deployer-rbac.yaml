@@ -1,0 +1,64 @@
+{{- range $name, $environment := .Values.environments }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: github-deployer
+  namespace: {{ $environment.namespace }}
+  labels:
+    {{- include "holizuki-platform.labels" $ | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: github-deployer
+  namespace: {{ $environment.namespace }}
+  labels:
+    {{- include "holizuki-platform.labels" $ | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "persistentvolumeclaims", "pods", "secrets", "serviceaccounts", "services"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/portforward"]
+    verbs: ["create"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["cronjobs", "jobs"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: ["traefik.io"]
+    resources: ["middlewares"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: github-deployer
+  namespace: {{ $environment.namespace }}
+  labels:
+    {{- include "holizuki-platform.labels" $ | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: github-deployer
+    namespace: {{ $environment.namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: github-deployer
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: github-deployer-token
+  namespace: {{ $environment.namespace }}
+  labels:
+    {{- include "holizuki-platform.labels" $ | nindent 4 }}
+  annotations:
+    kubernetes.io/service-account.name: github-deployer
+type: kubernetes.io/service-account-token
+---
+{{- end }}

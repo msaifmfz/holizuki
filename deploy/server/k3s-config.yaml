@@ -1,0 +1,10 @@
+cluster-init: true
+data-dir: /srv/holizuki/k3s
+node-name: holizuki-01
+secrets-encryption: true
+write-kubeconfig-mode: '0640'
+write-kubeconfig-group: k3s-admin
+etcd-snapshot-compress: true
+etcd-snapshot-dir: /srv/holizuki/k3s-snapshots
+etcd-snapshot-retention: 14
+etcd-snapshot-schedule-cron: '0 */6 * * *'

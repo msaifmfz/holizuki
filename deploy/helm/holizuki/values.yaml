@@ -1,0 +1,118 @@
+environment: production
+host: app.example.com
+release: local
+fullnameOverride: holizuki
+
+image:
+    repository: ghcr.io/msaifmfz/holizuki
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    pullPolicy: IfNotPresent
+    pullSecrets: []
+    phpVersion: '8.5'
+
+runtimeSecretName: holizuki-runtime
+
+database:
+    host: holizuki-postgres-rw
+    port: '5432'
+    name: holizuki
+    username: holizuki
+    passwordSecretName: holizuki-postgres-app
+    passwordSecretKey: password
+    sslMode: require
+
+application:
+    name: Holizuki
+    locale: en
+    fallbackLocale: en
+    maintenanceDriver: file
+    cacheStore: database
+    queueConnection: database
+    sessionDriver: database
+    sessionCookie: holizuki_production_session
+    cachePrefix: holizuki-production-cache-
+    filesystemDisk: local
+    mailMailer: log
+    trustedProxies: 10.42.0.0/16
+
+serviceAccount:
+    create: true
+    name: ''
+
+web:
+    replicas: 2
+    resources:
+        requests:
+            cpu: 250m
+            memory: 512Mi
+            ephemeral-storage: 256Mi
+        limits:
+            cpu: '1'
+            memory: 1Gi
+            ephemeral-storage: 1Gi
+
+worker:
+    enabled: true
+    replicas: 1
+    resources:
+        requests:
+            cpu: 250m
+            memory: 512Mi
+            ephemeral-storage: 256Mi
+        limits:
+            cpu: '1'
+            memory: 1Gi
+            ephemeral-storage: 1Gi
+
+scheduler:
+    enabled: true
+    schedule: '* * * * *'
+    resources:
+        requests:
+            cpu: 50m
+            memory: 128Mi
+            ephemeral-storage: 128Mi
+        limits:
+            cpu: 250m
+            memory: 256Mi
+            ephemeral-storage: 256Mi
+
+migration:
+    timeoutSeconds: 600
+    resources:
+        requests:
+            cpu: 100m
+            memory: 256Mi
+            ephemeral-storage: 256Mi
+        limits:
+            cpu: '1'
+            memory: 1Gi
+            ephemeral-storage: 1Gi
+
+uploads:
+    enabled: true
+    existingClaim: ''
+    storageClass: holizuki-local
+    size: 30Gi
+
+service:
+    port: 80
+
+ingress:
+    enabled: true
+    className: traefik
+    clusterIssuer: letsencrypt-production
+    tlsSecretName: holizuki-tls
+    basicAuth:
+        enabled: false
+        secretName: holizuki-staging-basic-auth
+    noIndex: false
+
+networkPolicy:
+    enabled: true
+    traefikNamespace: kube-system
+    traefikPodLabels:
+        app.kubernetes.io/name: traefik
+
+podAnnotations: {}
+podLabels: {}

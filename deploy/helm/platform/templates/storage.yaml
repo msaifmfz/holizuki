@@ -1,0 +1,66 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.storageClass.name }}
+  annotations:
+    helm.sh/resource-policy: keep
+  labels:
+    {{- include "holizuki-platform.labels" . | nindent 4 }}
+provisioner: kubernetes.io/no-provisioner
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+---
+{{- range $name, $environment := .Values.environments }}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: holizuki-{{ $name }}-postgres
+  annotations:
+    helm.sh/resource-policy: keep
+  labels:
+    app.kubernetes.io/component: postgres
+    holizuki.dev/environment: {{ $name }}
+    {{- include "holizuki-platform.labels" $ | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  capacity:
+    storage: {{ $environment.postgres.storage }}
+  claimRef:
+    name: {{ $.Values.postgres.clusterName }}-1
+    namespace: {{ $environment.namespace }}
+  local:
+    path: {{ $environment.postgres.path }}
+  nodeAffinity:
+    {{- include "holizuki-platform.nodeAffinity" $ | nindent 4 }}
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: {{ $.Values.storageClass.name }}
+  volumeMode: Filesystem
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: holizuki-{{ $name }}-uploads
+  annotations:
+    helm.sh/resource-policy: keep
+  labels:
+    app.kubernetes.io/component: uploads
+    holizuki.dev/environment: {{ $name }}
+    {{- include "holizuki-platform.labels" $ | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  capacity:
+    storage: {{ $environment.uploads.storage }}
+  claimRef:
+    name: holizuki-uploads
+    namespace: {{ $environment.namespace }}
+  local:
+    path: {{ $environment.uploads.path }}
+  nodeAffinity:
+    {{- include "holizuki-platform.nodeAffinity" $ | nindent 4 }}
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: {{ $.Values.storageClass.name }}
+  volumeMode: Filesystem
+---
+{{- end }}

@@ -3,47 +3,61 @@
 set -Eeuo pipefail
 
 script_dir="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-repository_root="$(CDPATH='' cd -- "$script_dir/../.." && pwd)"
 tag="${1:-}"
-archive="${2:-}"
+commit="${2:-}"
+repository="${3:-}"
+digest="${4:-}"
+php_base_image="${5:-}"
+output="${6:-}"
+source_release="${7:-}"
 
 die() {
     printf '%s\n' "$1" >&2
     exit 1
 }
 
-[[ -n "$archive" ]] || die 'An output archive path is required.'
-"$script_dir/classify-release.sh" "$tag" >/dev/null
+environment="$("$script_dir/classify-release.sh" "$tag")"
 
-cd "$repository_root"
+[[ "$commit" =~ ^[a-f0-9]{40}$ ]] || die 'The release commit must be a full Git SHA.'
+[[ "$repository" =~ ^[a-z0-9]+([._-][a-z0-9]+)*([/:][a-z0-9]+([._-][a-z0-9]+)*)+$ ]] || die 'The image repository is invalid.'
+[[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || die 'The image digest is invalid.'
+[[ "$php_base_image" =~ ^[^[:space:]@]+@sha256:[a-f0-9]{64}$ ]] || die 'The PHP base image must be digest-pinned.'
+[[ "$php_base_image" =~ php([0-9]+\.[0-9]+) ]] || die 'The PHP base image tag must identify its PHP major and minor version.'
+php_version="${BASH_REMATCH[1]}"
+[[ -n "$output" ]] || die 'An output manifest path is required.'
 
-[[ ! -e .env ]] || die 'Refusing to package a repository that contains an .env file.'
-
-for required_path in artisan bootstrap/app.php composer.lock public/build/manifest.json vendor/autoload.php; do
-    [[ -e "$required_path" ]] || die "Missing release input: $required_path"
-done
-
-mkdir -p "$(dirname -- "$archive")"
-rm -f -- "$archive"
-
-tar \
-    --exclude='./.env*' \
-    --exclude='./.git' \
-    --exclude='./.github' \
-    --exclude='./.idea' \
-    --exclude='./.vscode' \
-    --exclude='./coverage' \
-    --exclude='./dist' \
-    --exclude='./node_modules' \
-    --exclude='./playwright-report' \
-    --exclude='./storage/logs/*' \
-    --exclude='./test-results' \
-    --exclude='./tests' \
-    -czf "$archive" \
-    .
-
-if tar -tzf "$archive" | grep -Eq '(^|/)\.env($|/)'; then
-    die 'The release archive unexpectedly contains an environment file.'
+if [[ "$environment" == production ]]; then
+    [[ "$source_release" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]] || die 'Production must identify its promoted release candidate.'
+else
+    [[ -z "$source_release" ]] || die 'A staging candidate cannot have a source release.'
 fi
 
-printf 'Built %s for %s.\n' "$archive" "$tag"
+mkdir -p "$(dirname -- "$output")"
+
+jq --null-input \
+    --arg release "$tag" \
+    --arg environment "$environment" \
+    --arg commit "$commit" \
+    --arg repository "$repository" \
+    --arg digest "$digest" \
+    --arg phpBaseImage "$php_base_image" \
+    --arg phpVersion "$php_version" \
+    --arg sourceRelease "$source_release" \
+    '{
+        schemaVersion: 1,
+        release: $release,
+        environment: $environment,
+        commit: $commit,
+        image: {
+            repository: $repository,
+            digest: $digest,
+            reference: ($repository + "@" + $digest)
+        },
+        runtime: {
+            phpBaseImage: $phpBaseImage,
+            phpVersion: $phpVersion
+        }
+    } + if $sourceRelease == "" then {} else {promotedFrom: $sourceRelease} end' >"$output"
+
+jq --exit-status . "$output" >/dev/null
+printf 'Created release manifest for %s.\n' "$tag"

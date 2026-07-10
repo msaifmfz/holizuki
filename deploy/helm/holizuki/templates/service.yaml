@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "holizuki.fullname" . }}
+  labels:
+    {{- include "holizuki.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      protocol: TCP
+      targetPort: http
+  selector:
+    {{- include "holizuki.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: web

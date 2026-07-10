@@ -1,0 +1,55 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "holizuki.fullname" . }}-default-deny-ingress
+  labels:
+    {{- include "holizuki.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "holizuki.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "holizuki.fullname" . }}-allow-same-namespace
+  labels:
+    {{- include "holizuki.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "holizuki.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "holizuki.fullname" . }}-allow-traefik
+  labels:
+    {{- include "holizuki.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "holizuki.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: web
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.traefikNamespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.traefikPodLabels | nindent 14 }}
+      ports:
+        - port: 8080
+          protocol: TCP
+{{- end }}

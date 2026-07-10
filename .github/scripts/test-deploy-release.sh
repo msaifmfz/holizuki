@@ -13,52 +13,105 @@ cleanup() {
 
 trap cleanup EXIT
 
-deployment_root="$temporary_directory/application"
-fake_php="$temporary_directory/php"
+export HOLIZUKI_DEPLOY_ROOT="$temporary_directory/server"
+fake_bin="$temporary_directory/bin"
+log="$temporary_directory/commands.log"
+port_forward_ready="$temporary_directory/port-forward-ready"
+mkdir -p \
+    "$fake_bin" \
+    "$HOLIZUKI_DEPLOY_ROOT/config" \
+    "$HOLIZUKI_DEPLOY_ROOT/kubeconfig"
 
-mkdir -p "$deployment_root/shared"
-printf 'APP_ENV=testing\n' >"$deployment_root/shared/.env"
+printf '{}\n' >"$HOLIZUKI_DEPLOY_ROOT/config/production-overrides.yaml"
+printf 'apiVersion: v1\n' >"$HOLIZUKI_DEPLOY_ROOT/kubeconfig/production.yaml"
 
-# The generated script evaluates its own arguments.
-# shellcheck disable=SC2016
-printf '%s\n' \
-    '#!/usr/bin/env bash' \
-    'set -Eeuo pipefail' \
-    '[[ "${1:-}" == "artisan" ]]' \
-    'case "${2:-}" in' \
-    '    migrate|optimize|queue:restart) exit 0 ;;' \
-    '    *) exit 1 ;;' \
-    'esac' >"$fake_php"
-chmod +x "$fake_php"
+cat >"$fake_bin/helm" <<'SCRIPT'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+printf 'helm %s\n' "$*" >>"$TEST_COMMAND_LOG"
+[[ "${1:-}" != history ]]
+SCRIPT
 
-create_archive() {
-    local tag="$1"
-    local payload="$temporary_directory/payload-$tag"
-    local archive="$temporary_directory/$tag.tar.gz"
+cat >"$fake_bin/kubectl" <<'SCRIPT'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+printf 'kubectl %s\n' "$*" >>"$TEST_COMMAND_LOG"
+touch "$TEST_PORT_FORWARD_READY"
+while true; do
+    sleep 1
+done
+SCRIPT
 
-    mkdir -p "$payload/bootstrap" "$payload/public/build" "$payload/vendor"
-    printf '#!/usr/bin/env php\n' >"$payload/artisan"
-    printf '<?php\n' >"$payload/bootstrap/app.php"
-    printf '{}\n' >"$payload/public/build/manifest.json"
-    printf '<?php\n' >"$payload/vendor/autoload.php"
-    tar -czf "$archive" -C "$payload" .
+cat >"$fake_bin/curl" <<'SCRIPT'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+printf 'curl %s\n' "$*" >>"$TEST_COMMAND_LOG"
+if [[ "$*" == *'127.0.0.1'* ]]; then
+    for _ in {1..50}; do
+        [[ -f "$TEST_PORT_FORWARD_READY" ]] && break
+        sleep 0.02
+    done
 
-    printf '%s\n' "$archive"
-}
+    [[ -f "$TEST_PORT_FORWARD_READY" ]]
+fi
+if [[ "$*" == *"%{http_code}"* ]]; then
+    printf '200'
+fi
+SCRIPT
 
-archive_one="$(create_archive 'v1.2.3-rc.1')"
-checksum_one="$(shasum -a 256 "$archive_one" | awk '{print $1}')"
-"$deployment_script" "$deployment_root" 'v1.2.3-rc.1' "$archive_one" "$checksum_one" "$fake_php" 1 ''
+cat >"$fake_bin/flock" <<'SCRIPT'
+#!/usr/bin/env bash
+exit 0
+SCRIPT
 
-[[ "$(CDPATH='' cd -- "$deployment_root/current" && pwd -P)" == "$deployment_root/releases/v1.2.3-rc.1" ]]
-[[ -L "$deployment_root/current/.env" ]]
-[[ -L "$deployment_root/current/storage" ]]
+chmod +x "$fake_bin"/*
+export PATH="$fake_bin:$PATH"
+export TEST_COMMAND_LOG="$log"
+export TEST_PORT_FORWARD_READY="$port_forward_ready"
 
-archive_two="$(create_archive 'v1.2.3')"
-checksum_two="$(shasum -a 256 "$archive_two" | awk '{print $1}')"
-"$deployment_script" "$deployment_root" 'v1.2.3' "$archive_two" "$checksum_two" "$fake_php" 1 ''
+chart="$temporary_directory/holizuki-0.1.0.tgz"
+manifest="$temporary_directory/release-manifest.json"
+candidate_manifest="$temporary_directory/candidate-manifest.json"
+environment_values="$temporary_directory/production-values.yaml"
+printf 'chart payload\n' >"$chart"
+printf 'environment: production\n' >"$environment_values"
+"$script_dir/build-release.sh" \
+    v1.2.3-rc.1 \
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+    ghcr.io/example/holizuki \
+    sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+    dunglas/frankenphp:1-php8.5@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc \
+    "$candidate_manifest" >/dev/null
+jq --exit-status '.environment == "staging" and .runtime.phpVersion == "8.5" and has("promotedFrom") == false' "$candidate_manifest" >/dev/null
 
-[[ "$(CDPATH='' cd -- "$deployment_root/current" && pwd -P)" == "$deployment_root/releases/v1.2.3" ]]
-[[ ! -e "$deployment_root/releases/v1.2.3-rc.1" ]]
+"$script_dir/build-release.sh" \
+    v1.2.3 \
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+    ghcr.io/example/holizuki \
+    sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+    dunglas/frankenphp:1-php8.5@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc \
+    "$manifest" \
+    v1.2.3-rc.1 >/dev/null
 
-printf 'Atomic deployment tests passed.\n'
+chart_checksum="$(shasum -a 256 "$chart" | awk '{print $1}')"
+manifest_checksum="$(shasum -a 256 "$manifest" | awk '{print $1}')"
+environment_values_checksum="$(shasum -a 256 "$environment_values" | awk '{print $1}')"
+
+"$deployment_script" \
+    production \
+    v1.2.3 \
+    "$chart" \
+    "$chart_checksum" \
+    "$manifest" \
+    "$manifest_checksum" \
+    "$environment_values" \
+    "$environment_values_checksum" \
+    app.example.test \
+    https://app.example.test
+
+grep -Fq 'helm upgrade holizuki' "$log"
+grep -Fq -- '--set-string image.digest=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' "$log"
+grep -Fq 'kubectl --kubeconfig' "$log"
+jq --exit-status '.release == "v1.2.3" and .deployedAt != null' "$HOLIZUKI_DEPLOY_ROOT/history/production/v1.2.3.json" >/dev/null
+
+printf 'Helm deployment tests passed.\n'

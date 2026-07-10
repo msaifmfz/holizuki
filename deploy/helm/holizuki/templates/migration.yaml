@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "holizuki.fullname" . }}-migrate
+  labels:
+    {{- include "holizuki.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  activeDeadlineSeconds: {{ .Values.migration.timeoutSeconds }}
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        {{- include "holizuki.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migration
+    spec:
+      automountServiceAccountToken: false
+      {{- include "holizuki.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: default
+      restartPolicy: Never
+      securityContext:
+        {{- include "holizuki.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: migration
+          image: {{ include "holizuki.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - migrate
+          securityContext:
+            {{- include "holizuki.containerSecurityContext" . | nindent 12 }}
+          {{- include "holizuki.migrationEnv" . | nindent 10 }}
+          resources:
+            {{- toYaml .Values.migration.resources | nindent 12 }}
+          {{- include "holizuki.ephemeralVolumeMounts" . | nindent 10 }}
+      {{- include "holizuki.ephemeralVolumes" . | nindent 6 }}

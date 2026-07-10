@@ -1,0 +1,37 @@
+{{- range $name, $environment := .Values.environments }}
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: holizuki-quota
+  namespace: {{ $environment.namespace }}
+  labels:
+    {{- include "holizuki-platform.labels" $ | nindent 4 }}
+spec:
+  hard:
+    requests.cpu: {{ $environment.quota.requestsCpu | quote }}
+    requests.memory: {{ $environment.quota.requestsMemory }}
+    limits.cpu: {{ $environment.quota.limitsCpu | quote }}
+    limits.memory: {{ $environment.quota.limitsMemory }}
+    requests.storage: {{ $environment.quota.storage }}
+    persistentvolumeclaims: "4"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: holizuki-defaults
+  namespace: {{ $environment.namespace }}
+  labels:
+    {{- include "holizuki-platform.labels" $ | nindent 4 }}
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 50m
+        memory: 128Mi
+        ephemeral-storage: 64Mi
+      default:
+        cpu: 500m
+        memory: 512Mi
+        ephemeral-storage: 1Gi
+---
+{{- end }}

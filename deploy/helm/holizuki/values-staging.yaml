@@ -1,0 +1,38 @@
+environment: staging
+host: staging.example.com
+
+application:
+    sessionCookie: holizuki_staging_session
+    cachePrefix: holizuki-staging-cache-
+
+web:
+    replicas: 1
+    resources:
+        requests:
+            cpu: 100m
+            memory: 384Mi
+            ephemeral-storage: 128Mi
+        limits:
+            cpu: 500m
+            memory: 768Mi
+            ephemeral-storage: 512Mi
+
+worker:
+    resources:
+        requests:
+            cpu: 100m
+            memory: 256Mi
+            ephemeral-storage: 128Mi
+        limits:
+            cpu: 500m
+            memory: 512Mi
+            ephemeral-storage: 512Mi
+
+uploads:
+    size: 10Gi
+
+ingress:
+    basicAuth:
+        enabled: true
+        secretName: holizuki-staging-basic-auth
+    noIndex: true

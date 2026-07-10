@@ -1,0 +1,55 @@
+{{- if .Values.worker.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "holizuki.fullname" . }}-worker
+  labels:
+    {{- include "holizuki.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  progressDeadlineSeconds: 600
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      {{- include "holizuki.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "holizuki.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      {{- include "holizuki.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "holizuki.serviceAccountName" . }}
+      terminationGracePeriodSeconds: 120
+      securityContext:
+        {{- include "holizuki.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: worker
+          image: {{ include "holizuki.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - worker
+          securityContext:
+            {{- include "holizuki.containerSecurityContext" . | nindent 12 }}
+          {{- include "holizuki.env" . | nindent 10 }}
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+          {{- include "holizuki.volumeMounts" . | nindent 10 }}
+      {{- include "holizuki.volumes" . | nindent 6 }}
+{{- end }}

@@ -1,0 +1,45 @@
+{{- range $name, $environment := .Values.environments }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ $.Values.postgres.clusterName }}
+  namespace: {{ $environment.namespace }}
+  annotations:
+    helm.sh/resource-policy: keep
+  labels:
+    holizuki.dev/environment: {{ $name }}
+    {{- include "holizuki-platform.labels" $ | nindent 4 }}
+spec:
+  instances: 1
+  imageName: {{ $.Values.postgres.image }}
+  primaryUpdateStrategy: unsupervised
+  enableSuperuserAccess: false
+  bootstrap:
+    initdb:
+      database: {{ $.Values.postgres.database }}
+      owner: {{ $.Values.postgres.owner }}
+      encoding: UTF8
+      dataChecksums: true
+  storage:
+    size: {{ $environment.postgres.storage }}
+    storageClass: {{ $.Values.storageClass.name }}
+  resources:
+    {{- toYaml $environment.postgres.resources | nindent 4 }}
+  postgresql:
+    parameters:
+      max_connections: "100"
+      shared_buffers: "256MB"
+  affinity:
+    nodeSelector:
+      kubernetes.io/hostname: {{ $.Values.nodeHostname | quote }}
+  monitoring:
+    enablePodMonitor: {{ $.Values.postgres.monitoringEnabled }}
+  {{- if $.Values.backup.enabled }}
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: holizuki-backup
+  {{- end }}
+---
+{{- end }}

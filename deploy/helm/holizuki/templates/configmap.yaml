@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "holizuki.fullname" . }}
+  labels:
+    {{- include "holizuki.labels" . | nindent 4 }}
+data:
+  APP_NAME: {{ .Values.application.name | quote }}
+  APP_ENV: {{ .Values.environment | quote }}
+  APP_DEBUG: "false"
+  APP_URL: {{ printf "https://%s" .Values.host | quote }}
+  APP_RELEASE: {{ .Values.release | quote }}
+  APP_LOCALE: {{ .Values.application.locale | quote }}
+  APP_FALLBACK_LOCALE: {{ .Values.application.fallbackLocale | quote }}
+  APP_MAINTENANCE_DRIVER: {{ .Values.application.maintenanceDriver | quote }}
+  APP_MAINTENANCE_STORE: "database"
+  BCRYPT_ROUNDS: "12"
+  CACHE_STORE: {{ .Values.application.cacheStore | quote }}
+  CACHE_PREFIX: {{ .Values.application.cachePrefix | quote }}
+  DB_CONNECTION: "pgsql"
+  DB_HOST: {{ .Values.database.host | quote }}
+  DB_PORT: {{ .Values.database.port | quote }}
+  DB_DATABASE: {{ .Values.database.name | quote }}
+  DB_USERNAME: {{ .Values.database.username | quote }}
+  DB_SSLMODE: {{ .Values.database.sslMode | quote }}
+  DB_QUEUE_RETRY_AFTER: "120"
+  FILESYSTEM_DISK: {{ .Values.application.filesystemDisk | quote }}
+  LOG_CHANNEL: "stderr"
+  LOG_LEVEL: "info"
+  MAIL_MAILER: {{ .Values.application.mailMailer | quote }}
+  QUEUE_CONNECTION: {{ .Values.application.queueConnection | quote }}
+  SESSION_DRIVER: {{ .Values.application.sessionDriver | quote }}
+  SESSION_COOKIE: {{ .Values.application.sessionCookie | quote }}
+  SESSION_SECURE_COOKIE: "true"
+  SESSION_HTTP_ONLY: "true"
+  SESSION_SAME_SITE: "lax"
+  TELESCOPE_ENABLED: "false"
+  TRUSTED_HOSTS: {{ .Values.host | quote }}
+  TRUSTED_PROXIES: {{ .Values.application.trustedProxies | quote }}

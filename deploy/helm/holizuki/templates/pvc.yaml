@@ -1,0 +1,17 @@
+{{- if and .Values.uploads.enabled (not .Values.uploads.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "holizuki.uploadsClaim" . }}
+  annotations:
+    helm.sh/resource-policy: keep
+  labels:
+    {{- include "holizuki.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.uploads.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.uploads.size }}
+{{- end }}

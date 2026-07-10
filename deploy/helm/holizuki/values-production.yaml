@@ -1,0 +1,17 @@
+environment: production
+host: app.example.com
+
+application:
+    sessionCookie: holizuki_production_session
+    cachePrefix: holizuki-production-cache-
+
+web:
+    replicas: 2
+
+uploads:
+    size: 30Gi
+
+ingress:
+    basicAuth:
+        enabled: false
+    noIndex: false

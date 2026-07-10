@@ -3,13 +3,24 @@
 set -Eeuo pipefail
 umask 027
 
-root="${1:-}"
+environment="${1:-}"
 tag="${2:-}"
-archive="${3:-}"
-expected_checksum="${4:-}"
-php_binary="${5:-php}"
-keep_releases="${6:-5}"
-healthcheck_url="${7:-}"
+chart="${3:-}"
+expected_chart_checksum="${4:-}"
+manifest="${5:-}"
+expected_manifest_checksum="${6:-}"
+environment_values="${7:-}"
+expected_environment_values_checksum="${8:-}"
+host="${9:-}"
+external_url="${10:-}"
+
+root="${HOLIZUKI_DEPLOY_ROOT:-/srv/holizuki}"
+release_name=holizuki
+namespace="$environment"
+server_values="$root/config/$environment-overrides.yaml"
+kubeconfig="$root/kubeconfig/$environment.yaml"
+lock="$root/locks/$environment.lock"
+history_directory="$root/history/$environment"
 
 die() {
     printf '%s\n' "$1" >&2
@@ -22,144 +33,160 @@ checksum() {
         return
     fi
 
-    if command -v shasum >/dev/null 2>&1; then
-        shasum -a 256 "$1" | awk '{print $1}'
-        return
-    fi
-
-    die 'Neither sha256sum nor shasum is available on the deployment host.'
+    shasum -a 256 "$1" | awk '{print $1}'
 }
 
-switch_current() {
-    local target="$1"
-    local pending_link="$root/.current-${RANDOM}-${RANDOM}"
+stop_port_forward() {
+    if [[ -n "${port_forward_pid:-}" ]]; then
+        kill "$port_forward_pid" >/dev/null 2>&1 || true
+        wait "$port_forward_pid" 2>/dev/null || true
+    fi
+}
 
-    ln -s "$target" "$pending_link"
+rollback() {
+    if [[ -n "${previous_revision:-}" ]]; then
+        printf 'Health verification failed; rolling back to revision %s.\n' "$previous_revision" >&2
+        helm rollback "$release_name" "$previous_revision" \
+            --cleanup-on-fail \
+            --kubeconfig "$kubeconfig" \
+            --namespace "$namespace" \
+            --timeout 10m \
+            --wait || true
+    fi
+}
 
-    if mv --help 2>&1 | grep -q -- ' -T'; then
-        mv -Tf "$pending_link" "$root/current"
+verify_internal_health() {
+    local local_port
+
+    if [[ "$environment" == production ]]; then
+        local_port=18080
     else
-        mv -fh "$pending_link" "$root/current"
-    fi
-}
-
-list_releases() {
-    if stat --version >/dev/null 2>&1; then
-        find "$releases" -mindepth 1 -maxdepth 1 -type d -name 'v*' -exec stat -c '%Y %n' {} +
-    else
-        find "$releases" -mindepth 1 -maxdepth 1 -type d -name 'v*' -exec stat -f '%m %N' {} +
-    fi
-}
-
-resolve_directory() {
-    CDPATH='' cd -- "$1" && pwd -P
-}
-
-[[ "$root" =~ ^/[A-Za-z0-9._/-]+$ ]] || die 'DEPLOY_PATH must be an absolute path containing only safe characters.'
-[[ "$root" != '/' && "$root" != *'/../'* && "$root" != */.. ]] || die 'DEPLOY_PATH is unsafe.'
-[[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]] || die 'The release tag is invalid.'
-[[ -f "$archive" ]] || die 'The release archive does not exist.'
-[[ "$expected_checksum" =~ ^[a-f0-9]{64}$ ]] || die 'The expected SHA-256 checksum is invalid.'
-[[ "$php_binary" =~ ^[A-Za-z0-9._/-]+$ ]] || die 'The PHP binary contains unsafe characters.'
-[[ "$keep_releases" =~ ^[1-9][0-9]*$ ]] || die 'The release retention count must be a positive integer.'
-[[ -z "$healthcheck_url" || "$healthcheck_url" =~ ^https?:// ]] || die 'The health-check URL must use HTTP or HTTPS.'
-
-actual_checksum="$(checksum "$archive")"
-[[ "$actual_checksum" == "$expected_checksum" ]] || die 'The release archive checksum does not match.'
-
-if tar -tzf "$archive" | grep -Eq '(^|/)\.env($|/)'; then
-    die 'The release archive contains an environment file.'
-fi
-
-while IFS= read -r entry; do
-    [[ "$entry" != /* && "$entry" != ../* && "$entry" != *'/../'* ]] || die 'The release archive contains an unsafe path.'
-done < <(tar -tzf "$archive")
-
-releases="$root/releases"
-shared="$root/shared"
-final_release="$releases/$tag"
-
-[[ -f "$shared/.env" ]] || die "Missing shared environment file: $shared/.env"
-[[ ! -e "$final_release" ]] || die "Release already exists: $final_release"
-
-mkdir -p \
-    "$releases" \
-    "$shared/storage/app/public" \
-    "$shared/storage/framework/cache/data" \
-    "$shared/storage/framework/sessions" \
-    "$shared/storage/framework/views" \
-    "$shared/storage/logs"
-
-temporary_release="$(mktemp -d "$releases/.deploy-${tag}.XXXXXX")"
-release_path="$temporary_release"
-previous_release=""
-switched=false
-successful=false
-
-cleanup() {
-    if [[ "$successful" == true ]]; then
-        return
+        local_port=18081
     fi
 
-    if [[ "$switched" == true ]]; then
-        if [[ -n "$previous_release" && -d "$previous_release" ]]; then
-            switch_current "$previous_release"
-        else
-            rm -f "$root/current"
+    kubectl \
+        --kubeconfig "$kubeconfig" \
+        --namespace "$namespace" \
+        port-forward "service/$release_name" "$local_port:80" >"$root/tmp/$environment/port-forward.log" 2>&1 &
+    port_forward_pid=$!
+
+    for _ in {1..20}; do
+        if curl --fail --header "Host: $host" --max-time 3 --silent "http://127.0.0.1:$local_port/up" >/dev/null 2>&1; then
+            curl --fail --header "Host: $host" --max-time 3 --silent "http://127.0.0.1:$local_port/ready" >/dev/null
+            stop_port_forward
+            port_forward_pid=''
+            return
         fi
-    fi
 
-    rm -rf -- "$release_path"
+        sleep 1
+    done
+
+    stop_port_forward
+    port_forward_pid=''
+    printf 'The in-cluster health check failed.\n' >&2
+    return 1
 }
 
-trap cleanup EXIT
+verify_external_health() {
+    local actual_status
+    local expected_status=200
 
-tar --no-same-owner --no-same-permissions -xzf "$archive" -C "$temporary_release"
-
-for required_path in artisan bootstrap/app.php public/build/manifest.json vendor/autoload.php; do
-    [[ -e "$temporary_release/$required_path" ]] || die "Release is missing: $required_path"
-done
-
-rm -rf -- "$temporary_release/storage"
-ln -s "$shared/storage" "$temporary_release/storage"
-ln -s "$shared/.env" "$temporary_release/.env"
-rm -rf -- "$temporary_release/public/storage"
-ln -s "$shared/storage/app/public" "$temporary_release/public/storage"
-
-mv "$temporary_release" "$final_release"
-release_path="$final_release"
-
-cd "$final_release"
-"$php_binary" artisan migrate --force --isolated
-"$php_binary" artisan optimize
-
-if [[ -L "$root/current" ]]; then
-    previous_release="$(resolve_directory "$root/current")"
-fi
-
-switch_current "$final_release"
-switched=true
-
-if [[ -n "$healthcheck_url" ]]; then
-    command -v curl >/dev/null 2>&1 || die 'curl is required when a health-check URL is configured.'
-    curl --fail --location --retry 5 --retry-connrefused --show-error --silent --max-time 15 "$healthcheck_url" >/dev/null
-fi
-
-"$php_binary" artisan queue:restart || printf 'Warning: queue workers could not be restarted.\n' >&2
-
-successful=true
-
-retained=1
-while read -r _ release_directory; do
-    if [[ "$release_directory" == "$final_release" ]]; then
-        continue
+    if [[ "$environment" == staging ]]; then
+        expected_status=401
     fi
 
-    if (( retained >= keep_releases )); then
-        rm -rf -- "$release_directory"
-    else
-        retained=$((retained + 1))
-    fi
-done < <(list_releases | sort -rn)
+    actual_status="$(curl \
+        --location \
+        --max-time 15 \
+        --output /dev/null \
+        --show-error \
+        --silent \
+        --write-out '%{http_code}' \
+        "${external_url%/}/up")"
 
-printf 'Activated %s at %s/current.\n' "$tag" "$root"
+    if [[ "$actual_status" != "$expected_status" ]]; then
+        printf 'External health check returned HTTP %s; expected %s.\n' "$actual_status" "$expected_status" >&2
+        return 1
+    fi
+}
+
+[[ "$environment" == production || "$environment" == staging ]] || die 'The environment must be production or staging.'
+if [[ "$environment" == production ]]; then
+    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die 'Production requires a stable release tag.'
+else
+    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]] || die 'Staging requires a release-candidate tag.'
+fi
+[[ "$root" =~ ^/[A-Za-z0-9._/-]+$ && "$root" != / ]] || die 'The deployment root is unsafe.'
+[[ -f "$chart" ]] || die 'The Helm chart does not exist.'
+[[ -f "$manifest" ]] || die 'The release manifest does not exist.'
+[[ -f "$environment_values" ]] || die 'The environment values file does not exist.'
+[[ -f "$server_values" ]] || die "Missing server override file: $server_values"
+[[ -f "$kubeconfig" ]] || die "Missing namespace kubeconfig: $kubeconfig"
+[[ "$expected_chart_checksum" =~ ^[a-f0-9]{64}$ ]] || die 'The chart checksum is invalid.'
+[[ "$expected_manifest_checksum" =~ ^[a-f0-9]{64}$ ]] || die 'The manifest checksum is invalid.'
+[[ "$expected_environment_values_checksum" =~ ^[a-f0-9]{64}$ ]] || die 'The environment values checksum is invalid.'
+[[ "$(checksum "$chart")" == "$expected_chart_checksum" ]] || die 'The chart checksum does not match.'
+[[ "$(checksum "$manifest")" == "$expected_manifest_checksum" ]] || die 'The manifest checksum does not match.'
+[[ "$(checksum "$environment_values")" == "$expected_environment_values_checksum" ]] || die 'The environment values checksum does not match.'
+[[ "$host" =~ ^[A-Za-z0-9.-]+$ ]] || die 'The application host is invalid.'
+[[ "$external_url" == "https://$host" || "$external_url" == "https://$host/" ]] || die 'The external URL must be the HTTPS application origin.'
+
+jq --exit-status \
+    --arg release "$tag" \
+    --arg environment "$environment" \
+    '.schemaVersion == 1 and .release == $release and .environment == $environment and (.commit | test("^[a-f0-9]{40}$")) and (.image.digest | test("^sha256:[a-f0-9]{64}$")) and (.image.reference == (.image.repository + "@" + .image.digest))' \
+    "$manifest" >/dev/null || die 'The release manifest is invalid.'
+
+repository="$(jq --raw-output '.image.repository' "$manifest")"
+digest="$(jq --raw-output '.image.digest' "$manifest")"
+php_base_image="$(jq --raw-output '.runtime.phpBaseImage' "$manifest")"
+php_version="$(jq --raw-output '.runtime.phpVersion' "$manifest")"
+
+[[ "$repository" =~ ^[a-z0-9]+([._-][a-z0-9]+)*([/:][a-z0-9]+([._-][a-z0-9]+)*)+$ ]] || die 'The manifest image repository is invalid.'
+[[ "$php_base_image" =~ ^[^[:space:]@]+@sha256:[a-f0-9]{64}$ ]] || die 'The manifest PHP base image is not pinned.'
+[[ "$php_version" =~ ^[0-9]+\.[0-9]+$ ]] || die 'The manifest PHP version is invalid.'
+
+mkdir -p "$history_directory" "$root/locks" "$root/tmp/$environment"
+exec 9>"$lock"
+flock -n 9 || die "Another $environment deployment is running."
+trap stop_port_forward EXIT
+
+helm lint "$chart" --values "$environment_values" --values "$server_values" >/dev/null
+
+previous_revision="$(helm history "$release_name" \
+    --kubeconfig "$kubeconfig" \
+    --max 1 \
+    --namespace "$namespace" \
+    --output json 2>/dev/null | jq --raw-output '.[-1].revision // empty' || true)"
+
+helm upgrade "$release_name" "$chart" \
+    --cleanup-on-fail \
+    --history-max 10 \
+    --install \
+    --kubeconfig "$kubeconfig" \
+    --namespace "$namespace" \
+    --rollback-on-failure \
+    --set-string "host=$host" \
+    --set-string "image.digest=$digest" \
+    --set-string "image.repository=$repository" \
+    --set-string "image.phpVersion=$php_version" \
+    --set-string "release=$tag" \
+    --timeout 10m \
+    --values "$environment_values" \
+    --values "$server_values" \
+    --wait
+
+if ! verify_internal_health || ! verify_external_health; then
+    rollback
+    exit 1
+fi
+
+history_file="$history_directory/$tag.json"
+jq \
+    --arg deployedAt "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+    --arg host "$host" \
+    '. + {deployedAt: $deployedAt, host: $host}' \
+    "$manifest" >"$history_file.tmp"
+mv "$history_file.tmp" "$history_file"
+
+printf 'Deployed %s to %s using %s@%s.\n' "$tag" "$environment" "$repository" "$digest"

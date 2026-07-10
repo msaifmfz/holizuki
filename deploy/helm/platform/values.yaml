@@ -1,0 +1,71 @@
+nodeHostname: holizuki-01
+
+storageClass:
+    name: holizuki-local
+
+clusterIssuer:
+    name: letsencrypt-production
+    email: admin@example.com
+    server: https://acme-v02.api.letsencrypt.org/directory
+
+postgres:
+    image: ghcr.io/cloudnative-pg/postgresql:18.3-standard-trixie@sha256:9f9f53c9e07e5b2924945e6eaeb9168f7e856786d221839866ac85ccd703b3ba
+    clusterName: holizuki-postgres
+    database: holizuki
+    owner: holizuki
+    monitoringEnabled: false
+
+monitoring:
+    enabled: false
+
+backup:
+    enabled: false
+    endpointURL: ''
+    destinationPath: s3://replace-me/holizuki
+    credentialsSecretName: holizuki-backup-object-store
+    schedule: '0 30 2 * * *'
+    retentionPolicy: 30d
+
+environments:
+    production:
+        namespace: production
+        postgres:
+            storage: 50Gi
+            path: /srv/holizuki/production/postgres
+            resources:
+                requests:
+                    cpu: 500m
+                    memory: 1Gi
+                limits:
+                    cpu: '2'
+                    memory: 2Gi
+        uploads:
+            storage: 30Gi
+            path: /srv/holizuki/production/uploads
+        quota:
+            requestsCpu: '4'
+            requestsMemory: 8Gi
+            limitsCpu: '8'
+            limitsMemory: 12Gi
+            storage: 100Gi
+    staging:
+        namespace: staging
+        postgres:
+            storage: 15Gi
+            path: /srv/holizuki/staging/postgres
+            resources:
+                requests:
+                    cpu: 200m
+                    memory: 512Mi
+                limits:
+                    cpu: '1'
+                    memory: 1Gi
+        uploads:
+            storage: 10Gi
+            path: /srv/holizuki/staging/uploads
+        quota:
+            requestsCpu: '2'
+            requestsMemory: 3Gi
+            limitsCpu: '4'
+            limitsMemory: 4Gi
+            storage: 30Gi
