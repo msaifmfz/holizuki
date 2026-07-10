@@ -1,0 +1,28 @@
+{
+    "$schema": "https://unpkg.com/knip@6/schema.json",
+    "entry": [
+        "resources/js/app.tsx",
+        "resources/js/pages/**/*.tsx",
+        "resources/js/**/*.test.{ts,tsx}"
+    ],
+    "project": ["resources/js/**/*.{ts,tsx}", "*.{js,ts}"],
+    "ignoreFiles": [
+        "resources/js/components/app-header.tsx",
+        "resources/js/components/ui/{badge,collapsible,icon,navigation-menu,select,toggle,toggle-group}.tsx",
+        "resources/js/layouts/app/app-header-layout.tsx",
+        "resources/js/layouts/auth/{auth-card-layout,auth-split-layout}.tsx"
+    ],
+    "ignoreDependencies": [
+        "@radix-ui/react-collapsible",
+        "@radix-ui/react-navigation-menu",
+        "@radix-ui/react-select",
+        "@radix-ui/react-toggle",
+        "@radix-ui/react-toggle-group",
+        "concurrently",
+        "tailwindcss",
+        "tw-animate-css"
+    ],
+    "ignoreIssues": {
+        "resources/js/components/ui/**": ["exports", "types"]
+    }
+}

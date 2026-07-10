@@ -1,8 +1,8 @@
 // Credit: https://usehooks-ts.com/
 import { useState } from 'react';
 
-export type CopiedValue = string | null;
-export type CopyFn = (text: string) => Promise<boolean>;
+type CopiedValue = string | null;
+type CopyFn = (text: string) => Promise<boolean>;
 export type UseClipboardReturn = [CopiedValue, CopyFn];
 
 export function useClipboard(): UseClipboardReturn {

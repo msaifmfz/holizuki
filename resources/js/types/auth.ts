@@ -23,12 +23,3 @@ export type Passkey = {
     last_used_at_diff: string | null;
 };
 /* @end-chisel-passkeys */
-
-export type TwoFactorSetupData = {
-    svg: string;
-    url: string;
-};
-
-export type TwoFactorSecretKey = {
-    secretKey: string;
-};

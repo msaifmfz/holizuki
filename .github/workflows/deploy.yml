@@ -1,0 +1,229 @@
+name: Deploy release
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    name: Release CI
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  classify:
+    name: Classify release
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      environment: ${{ steps.release.outputs.environment }}
+      tag: ${{ steps.release.outputs.tag }}
+
+    steps:
+      - name: Checkout release
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Validate tag and release metadata
+        id: release
+        env:
+          EVENT_SHA: ${{ github.sha }}
+          IS_PRERELEASE: ${{ github.event.release.prerelease }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          environment="$(.github/scripts/classify-release.sh "$RELEASE_TAG")"
+          tag_commit="$(git rev-parse "$RELEASE_TAG^{commit}")"
+
+          if [[ "$tag_commit" != "$EVENT_SHA" ]]; then
+            echo '::error::The release event SHA does not match the tag commit.'
+            exit 1
+          fi
+
+          git fetch --no-tags origin main
+
+          if ! git merge-base --is-ancestor "$tag_commit" origin/main; then
+            echo '::error::The release tag must point to a commit on main.'
+            exit 1
+          fi
+
+          if [[ "$environment" == 'staging' && "$IS_PRERELEASE" != 'true' ]]; then
+            echo '::error::Release-candidate tags must be published as prereleases.'
+            exit 1
+          fi
+
+          if [[ "$environment" == 'production' && "$IS_PRERELEASE" == 'true' ]]; then
+            echo '::error::Production tags cannot be published as prereleases.'
+            exit 1
+          fi
+
+          echo "environment=$environment" >>"$GITHUB_OUTPUT"
+          echo "tag=$RELEASE_TAG" >>"$GITHUB_OUTPUT"
+
+  build:
+    name: Build release artifact
+    needs: classify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      attestations: write # Required to publish artifact provenance.
+      contents: read
+      id-token: write # Required for keyless artifact attestation.
+
+    steps:
+      - name: Checkout release
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          ref: ${{ needs.classify.outputs.tag }}
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+        with:
+          php-version: '8.5'
+          tools: composer:v2
+          coverage: none
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Install production PHP dependencies
+        run: composer install --no-dev --no-interaction --no-progress --prefer-dist --classmap-authoritative
+
+      - name: Build production assets
+        run: |
+          npm ci
+          npm run build
+
+      - name: Package release
+        env:
+          RELEASE_TAG: ${{ needs.classify.outputs.tag }}
+        run: .github/scripts/build-release.sh "$RELEASE_TAG" "$RUNNER_TEMP/release.tar.gz"
+
+      - name: Attest release artifact
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: ${{ runner.temp }}/release.tar.gz
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-${{ needs.classify.outputs.tag }}
+          path: ${{ runner.temp }}/release.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    name: Deploy to ${{ needs.classify.outputs.environment }}
+    needs:
+      - build
+      - classify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: ${{ needs.classify.outputs.environment }}
+      url: ${{ vars.DEPLOY_URL }}
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout deployment scripts
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          ref: ${{ needs.classify.outputs.tag }}
+
+      - name: Download release artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-${{ needs.classify.outputs.tag }}
+          path: ${{ runner.temp }}/artifact
+
+      - name: Deploy over SSH
+        env:
+          DEPLOY_HEALTHCHECK_URL: ${{ vars.DEPLOY_URL }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_KEEP_RELEASES: ${{ vars.DEPLOY_KEEP_RELEASES || '5' }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          DEPLOY_PHP_BINARY: ${{ vars.DEPLOY_PHP_BINARY || 'php' }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          DEPLOY_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          RELEASE_TAG: ${{ needs.classify.outputs.tag }}
+        run: |
+          for variable in DEPLOY_HOST DEPLOY_KNOWN_HOSTS DEPLOY_PATH DEPLOY_PRIVATE_KEY DEPLOY_USER; do
+            if [[ -z "${!variable}" ]]; then
+              echo "::error::Missing deployment configuration: $variable"
+              exit 1
+            fi
+          done
+
+          [[ "$DEPLOY_HOST" =~ ^[A-Za-z0-9.-]+$ ]]
+          [[ "$DEPLOY_USER" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]]
+          [[ "$DEPLOY_PORT" =~ ^[0-9]+$ ]]
+
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" >"$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          install -m 600 /dev/null "$HOME/.ssh/deploy_key"
+          printf '%s\n' "$DEPLOY_PRIVATE_KEY" >"$HOME/.ssh/deploy_key"
+
+          archive="$RUNNER_TEMP/artifact/release.tar.gz"
+          checksum="$(sha256sum "$archive" | awk '{print $1}')"
+          remote_prefix="/tmp/holizuki-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          remote_archive="${remote_prefix}.tar.gz"
+          remote_script="${remote_prefix}.sh"
+          target="${DEPLOY_USER}@${DEPLOY_HOST}"
+
+          ssh_options=(
+            -i "$HOME/.ssh/deploy_key"
+            -p "$DEPLOY_PORT"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+          )
+          scp_options=(
+            -i "$HOME/.ssh/deploy_key"
+            -P "$DEPLOY_PORT"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+          )
+
+          printf -v cleanup_command 'rm -f -- %q %q' "$remote_archive" "$remote_script"
+          cleanup_remote() {
+            # shellcheck disable=SC2029
+            ssh "${ssh_options[@]}" "$target" "$cleanup_command" || true
+          }
+          trap cleanup_remote EXIT
+
+          scp "${scp_options[@]}" "$archive" "$target:$remote_archive"
+          scp "${scp_options[@]}" .github/scripts/deploy-release.sh "$target:$remote_script"
+
+          printf -v deploy_command 'bash %q %q %q %q %q %q %q %q' \
+            "$remote_script" \
+            "$DEPLOY_PATH" \
+            "$RELEASE_TAG" \
+            "$remote_archive" \
+            "$checksum" \
+            "$DEPLOY_PHP_BINARY" \
+            "$DEPLOY_KEEP_RELEASES" \
+            "$DEPLOY_HEALTHCHECK_URL"
+
+          # shellcheck disable=SC2029
+          ssh "${ssh_options[@]}" "$target" "$deploy_command"

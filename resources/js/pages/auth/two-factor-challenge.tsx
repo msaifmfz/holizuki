@@ -68,7 +68,6 @@ export default function TwoFactorChallenge() {
                                         name="recovery_code"
                                         type="text"
                                         placeholder="Enter recovery code"
-                                        autoFocus={showRecoveryInput}
                                         required
                                     />
                                     <InputError
@@ -85,7 +84,6 @@ export default function TwoFactorChallenge() {
                                             onChange={(value) => setCode(value)}
                                             disabled={processing}
                                             pattern={REGEXP_ONLY_DIGITS}
-                                            autoFocus
                                         >
                                             <InputOTPGroup>
                                                 {Array.from(

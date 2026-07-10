@@ -9,15 +9,18 @@
     ],
     "license": "MIT",
     "require": {
-        "php": "^8.3",
+        "php": "^8.5",
         "inertiajs/inertia-laravel": "^3.0",
         "laravel/chisel": "^0.1.0",
         "laravel/fortify": "^1.37.2",
         "laravel/framework": "^13.17",
+        "laravel/passkeys": "^0.2.0",
         "laravel/tinker": "^3.0",
         "laravel/wayfinder": "^0.1.14"
     },
     "require-dev": {
+        "barryvdh/laravel-ide-helper": "^3.7",
+        "driftingly/rector-laravel": "^2.5",
         "fakerphp/faker": "^1.24",
         "larastan/larastan": "^3.9",
         "laravel/boost": "^2.2",
@@ -25,10 +28,18 @@
         "laravel/pao": "^1.0.6",
         "laravel/pint": "^1.27",
         "laravel/sail": "^1.53",
+        "laravel/telescope": "^5.20",
         "mockery/mockery": "^1.6",
         "nunomaduro/collision": "^8.9.3",
         "pestphp/pest": "^4.7",
-        "pestphp/pest-plugin-laravel": "^4.1"
+        "pestphp/pest-plugin-browser": "^4.3",
+        "pestphp/pest-plugin-laravel": "^4.1",
+        "pestphp/pest-plugin-type-coverage": "^4.0",
+        "phpstan/phpstan-deprecation-rules": "^2.0",
+        "phpstan/phpstan-strict-rules": "^2.0",
+        "rector/rector": "^2.5",
+        "shipmonk/composer-dependency-analyser": "^1.8",
+        "spaze/phpstan-disallowed-calls": "^4.12"
     },
     "autoload": {
         "psr-4": {
@@ -48,7 +59,7 @@
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
             "@php artisan key:generate",
             "@php artisan migrate --force",
-            "npm install",
+            "npm ci",
             "npm run build"
         ],
         "dev": [
@@ -63,19 +74,55 @@
         ],
         "ci:check": [
             "Composer\\Config::disableProcessTimeout",
-            "npm run lint:check",
-            "npm run format:check",
-            "npm run types:check",
-            "@test"
+            "@quality",
+            "@test",
+            "npm run check",
+            "npm run build"
         ],
         "types:check": [
-            "phpstan analyse"
+            "phpstan analyse --memory-limit=1G"
+        ],
+        "rector": [
+            "rector process"
+        ],
+        "rector:check": [
+            "rector process --dry-run"
+        ],
+        "dependencies:check": [
+            "composer-dependency-analyser"
+        ],
+        "type-coverage:check": [
+            "@php -d memory_limit=1G vendor/bin/pest --type-coverage --min=100"
+        ],
+        "security:check": [
+            "composer audit --locked --abandoned=fail"
+        ],
+        "quality": [
+            "@lint:check",
+            "@types:check",
+            "@rector:check",
+            "@dependencies:check",
+            "@type-coverage:check",
+            "@security:check"
         ],
         "test": [
             "@php artisan config:clear --ansi",
-            "@lint:check",
-            "@types:check",
-            "@php artisan test"
+            "@php artisan test --compact"
+        ],
+        "test:coverage": [
+            "@putenv XDEBUG_MODE=coverage",
+            "@php -d memory_limit=1G vendor/bin/pest --coverage --min=90"
+        ],
+        "test:browser": [
+            "pest tests/Browser"
+        ],
+        "test:mutation": [
+            "@putenv XDEBUG_MODE=coverage",
+            "@php -d memory_limit=1G vendor/bin/pest --mutate --everything --parallel --min=30"
+        ],
+        "ide-helper": [
+            "@php artisan ide-helper:generate",
+            "@php artisan ide-helper:meta"
         ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
@@ -99,7 +146,9 @@
     },
     "extra": {
         "laravel": {
-            "dont-discover": [],
+            "dont-discover": [
+                "laravel/telescope"
+            ],
             "installer": {
                 "post-create-project": []
             }
@@ -112,6 +161,9 @@
         "allow-plugins": {
             "pestphp/pest-plugin": true,
             "php-http/discovery": true
+        },
+        "audit": {
+            "abandoned": "fail"
         }
     },
     "minimum-stability": "stable",

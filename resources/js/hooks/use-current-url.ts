@@ -2,18 +2,18 @@ import type { InertiaLinkProps } from '@inertiajs/react';
 import { usePage } from '@inertiajs/react';
 import { toUrl } from '@/lib/utils';
 
-export type IsCurrentUrlFn = (
+type IsCurrentUrlFn = (
     urlToCheck: NonNullable<InertiaLinkProps['href']>,
     currentUrl?: string,
     startsWith?: boolean,
 ) => boolean;
 
-export type IsCurrentOrParentUrlFn = (
+type IsCurrentOrParentUrlFn = (
     urlToCheck: NonNullable<InertiaLinkProps['href']>,
     currentUrl?: string,
 ) => boolean;
 
-export type WhenCurrentUrlFn = <TIfTrue, TIfFalse = null>(
+type WhenCurrentUrlFn = <TIfTrue, TIfFalse = null>(
     urlToCheck: NonNullable<InertiaLinkProps['href']>,
     ifTrue: TIfTrue,
     ifFalse?: TIfFalse,

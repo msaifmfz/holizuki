@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
@@ -13,6 +15,7 @@ use Illuminate\Support\Carbon;
 use Laravel\Fortify\Contracts\PasskeyUser;
 use Laravel\Fortify\PasskeyAuthenticatable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
+use Override;
 
 /**
  * @property int $id
@@ -39,6 +42,7 @@ class User extends Authenticatable implements PasskeyUser
      *
      * @return array<string, string>
      */
+    #[Override]
     protected function casts(): array
     {
         return [
