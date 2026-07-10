@@ -1,0 +1,14 @@
+pre-commit:
+  commands:
+    php:
+      glob: '*.php'
+      run: vendor/bin/pint --dirty {staged_files}
+      stage_fixed: true
+    eslint:
+      glob: '*.{js,jsx,ts,tsx}'
+      run: npx eslint --fix --no-warn-ignored {staged_files}
+      stage_fixed: true
+    prettier:
+      glob: '*.{css,js,jsx,json,ts,tsx,yaml,yml}'
+      run: npx prettier --write {staged_files}
+      stage_fixed: true

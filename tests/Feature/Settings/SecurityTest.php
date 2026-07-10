@@ -4,8 +4,10 @@ use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Inertia\Testing\AssertableInertia as Assert;
 use Laravel\Fortify\Features;
+use Laravel\Passkeys\Passkey;
+use Laravel\Passkeys\Support\Aaguids;
 
-test('security page is displayed', function () {
+test('security page is displayed', function (): void {
     $this->skipUnlessFortifyHas(Features::twoFactorAuthentication());
 
     Features::twoFactorAuthentication([
@@ -21,7 +23,7 @@ test('security page is displayed', function () {
     $this->actingAs($user)
         ->withSession(['auth.password_confirmed_at' => time()])
         ->get(route('security.edit'))
-        ->assertInertia(fn (Assert $page) => $page
+        ->assertInertia(fn (Assert $page): Assert => $page
             ->component('settings/security')
             ->where('canManagePasskeys', true)
             ->where('passkeys', [])
@@ -30,7 +32,7 @@ test('security page is displayed', function () {
         );
 });
 
-test('security page requires password confirmation when enabled', function () {
+test('security page requires password confirmation when enabled', function (): void {
     $this->skipUnlessFortifyHas(Features::twoFactorAuthentication());
 
     $user = User::factory()->create();
@@ -46,7 +48,32 @@ test('security page requires password confirmation when enabled', function () {
     $response->assertRedirect(route('password.confirm'));
 });
 
-test('security page renders without two factor when feature is disabled', function () {
+test('security page serializes stored passkeys', function (): void {
+    $user = User::factory()->create();
+    $passkey = new Passkey;
+
+    $passkey->forceFill([
+        'user_id' => $user->id,
+        'name' => 'Laptop',
+        'credential_id' => 'test-credential',
+        'credential' => ['aaguid' => Aaguids::unknown()],
+        'last_used_at' => now()->subMinute(),
+    ])->save();
+
+    $this->actingAs($user)
+        ->withSession(['auth.password_confirmed_at' => time()])
+        ->get(route('security.edit'))
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->has('passkeys', 1)
+            ->where('passkeys.0.id', $passkey->id)
+            ->where('passkeys.0.name', 'Laptop')
+            ->where('passkeys.0.authenticator', null)
+            ->where('passkeys.0.created_at_diff', fn (string $value): bool => $value !== '')
+            ->where('passkeys.0.last_used_at_diff', fn (string $value): bool => $value !== ''),
+        );
+});
+
+test('security page renders without two factor when feature is disabled', function (): void {
     $this->skipUnlessFortifyHas(Features::twoFactorAuthentication());
 
     config(['fortify.features' => []]);
@@ -57,7 +84,7 @@ test('security page renders without two factor when feature is disabled', functi
         ->withSession(['auth.password_confirmed_at' => time()])
         ->get(route('security.edit'))
         ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
+        ->assertInertia(fn (Assert $page): Assert => $page
             ->component('settings/security')
             ->where('canManagePasskeys', false)
             ->where('passkeys', [])
@@ -67,7 +94,7 @@ test('security page renders without two factor when feature is disabled', functi
         );
 });
 
-test('password can be updated', function () {
+test('password can be updated', function (): void {
     $user = User::factory()->create();
 
     $response = $this
@@ -86,7 +113,7 @@ test('password can be updated', function () {
     expect(Hash::check('new-password', $user->refresh()->password))->toBeTrue();
 });
 
-test('correct password must be provided to update password', function () {
+test('correct password must be provided to update password', function (): void {
     $user = User::factory()->create();
 
     $response = $this

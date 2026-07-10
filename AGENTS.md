@@ -21,8 +21,10 @@ This application is a Laravel application and its main Laravel ecosystems packag
 - laravel/pail (PAIL) - v1
 - laravel/pint (PINT) - v1
 - laravel/sail (SAIL) - v1
+- laravel/telescope (TELESCOPE) - v5
 - pestphp/pest (PEST) - v4
 - phpunit/phpunit (PHPUNIT) - v12
+- rector/rector (RECTOR) - v2
 - @inertiajs/react (INERTIA_REACT) - v3
 - react (REACT) - v19
 - tailwindcss (TAILWINDCSS) - v4

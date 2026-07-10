@@ -114,8 +114,11 @@
         "jsx": "react-jsx"
     },
     "include": [
+        "eslint.config.js",
         "resources/js/**/*.ts",
         "resources/js/**/*.d.ts",
-        "resources/js/**/*.tsx"
+        "resources/js/**/*.tsx",
+        "vite.config.ts",
+        "vitest.config.ts"
     ]
 }

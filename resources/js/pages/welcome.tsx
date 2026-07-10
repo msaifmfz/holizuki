@@ -42,7 +42,7 @@ export default function Welcome() {
                             <h1 className="mb-1 font-medium">
                                 Let's get started
                             </h1>
-                            <p className="mb-2 text-[#706f6c] dark:text-[#A1A09A]">
+                            <p className="mb-2 text-neutral-600 dark:text-neutral-400">
                                 Laravel has an incredibly rich ecosystem.
                                 <br />
                                 We suggest starting with the following.
@@ -59,7 +59,7 @@ export default function Welcome() {
                                         <a
                                             href="https://laravel.com/docs"
                                             target="_blank"
-                                            className="ml-1 inline-flex items-center space-x-1 font-medium text-[#f53003] underline underline-offset-4 dark:text-[#FF4433]"
+                                            className="ml-1 inline-flex items-center space-x-1 font-medium text-red-700 underline underline-offset-4 dark:text-red-400"
                                         >
                                             <span>Documentation</span>
                                             <svg
@@ -90,7 +90,7 @@ export default function Welcome() {
                                         <a
                                             href="https://laracasts.com"
                                             target="_blank"
-                                            className="ml-1 inline-flex items-center space-x-1 font-medium text-[#f53003] underline underline-offset-4 dark:text-[#FF4433]"
+                                            className="ml-1 inline-flex items-center space-x-1 font-medium text-red-700 underline underline-offset-4 dark:text-red-400"
                                         >
                                             <span>Laracasts</span>
                                             <svg
