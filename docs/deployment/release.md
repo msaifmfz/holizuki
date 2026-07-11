@@ -5,7 +5,7 @@
 - A prerelease tag `vMAJOR.MINOR.PATCH-rc.NUMBER` deploys to staging.
 - A stable tag `vMAJOR.MINOR.PATCH` deploys to production.
 - CI builds an OCI image only for a release candidate. It pins the PHP base image, builds frontend assets, generates an SBOM/provenance, scans high and critical vulnerabilities, and pushes to GHCR.
-- Production never rebuilds the image. It finds a successfully deployed release candidate with the same version and exact Git commit, then promotes that candidate's image digest.
+- Production never rebuilds the image. It finds a successfully deployed release candidate with the same version and exact Git commit, rescans that digest for high and critical vulnerabilities, then promotes it.
 - Helm deploys by `repository@sha256:digest`, not by a mutable image tag.
 - Production and staging deployments have separate locks, namespaces, secrets, databases, uploads, resource quotas, ingress hosts, and PHP images.
 

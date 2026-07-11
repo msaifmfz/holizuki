@@ -120,7 +120,6 @@ jobs:
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Sign in to GitHub Container Registry
-        if: needs.classify.outputs.environment == 'staging'
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
@@ -252,6 +251,25 @@ jobs:
             echo '::error::Production requires a tested release candidate from the exact same commit.'
             exit 1
           fi
+
+      - name: Read promoted image reference
+        if: needs.classify.outputs.environment == 'production'
+        id: promoted
+        run: |
+          {
+            echo "digest=$(jq --raw-output '.image.digest' "$RUNNER_TEMP/release-manifest.json")"
+            echo "repository=$(jq --raw-output '.image.repository' "$RUNNER_TEMP/release-manifest.json")"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Rescan promoted image
+        if: needs.classify.outputs.environment == 'production'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          exit-code: '1'
+          format: table
+          ignore-unfixed: true
+          image-ref: ${{ steps.promoted.outputs.repository }}@${{ steps.promoted.outputs.digest }}
+          severity: CRITICAL,HIGH
 
       - name: Validate and publish release manifest
         env:
