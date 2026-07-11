@@ -32,11 +32,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Devbox
-        uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7 # v0.15.0
-        with:
-          devbox-version: 0.17.5
-          enable-cache: 'true'
+      - name: Bootstrap toolchain
+        uses: ./.github/actions/bootstrap
 
       - name: Bootstrap development environment
         run: devbox run setup
@@ -55,25 +52,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Devbox
-        uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7 # v0.15.0
+      - name: Bootstrap toolchain
+        uses: ./.github/actions/bootstrap
         with:
-          devbox-version: 0.17.5
-          enable-cache: 'true'
-
-      - name: Locate Composer cache
-        id: composer-cache
-        run: echo "directory=$(devbox run --quiet -- composer config cache-files-dir)" >>"$GITHUB_OUTPUT"
-
-      - name: Cache Composer packages
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ steps.composer-cache.outputs.directory }}
-          key: composer-${{ runner.os }}-php85-${{ hashFiles('composer.lock') }}
-          restore-keys: composer-${{ runner.os }}-php85-
-
-      - name: Install PHP dependencies
-        run: devbox run -- composer install --no-interaction --no-progress --prefer-dist
+          install-composer: 'true'
 
       - name: Run PHP quality gates
         run: devbox run -- composer quality
@@ -89,14 +71,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Devbox
-        uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7 # v0.15.0
+      - name: Bootstrap toolchain
+        uses: ./.github/actions/bootstrap
         with:
-          devbox-version: 0.17.5
-          enable-cache: 'true'
-
-      - name: Install PHP dependencies
-        run: devbox run -- composer install --no-interaction --no-progress --prefer-dist
+          install-composer: 'true'
 
       - name: Prepare application
         run: |
@@ -117,16 +95,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Devbox
-        uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7 # v0.15.0
+      - name: Bootstrap toolchain
+        uses: ./.github/actions/bootstrap
         with:
-          devbox-version: 0.17.5
-          enable-cache: 'true'
-
-      - name: Install dependencies
-        run: |
-          devbox run -- composer install --no-interaction --no-progress --prefer-dist
-          devbox run -- npm ci
+          install-composer: 'true'
+          install-npm: 'true'
 
       - name: Build production assets
         run: devbox run -- npm run build
@@ -145,16 +118,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Devbox
-        uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7 # v0.15.0
+      - name: Bootstrap toolchain
+        uses: ./.github/actions/bootstrap
         with:
-          devbox-version: 0.17.5
-          enable-cache: 'true'
-
-      - name: Install dependencies
-        run: |
-          devbox run -- composer install --no-interaction --no-progress --prefer-dist
-          devbox run -- npm ci
+          install-composer: 'true'
+          install-npm: 'true'
+          install-playwright: 'true'
 
       - name: Prepare application
         run: |
@@ -162,11 +131,20 @@ jobs:
           devbox run -- php artisan key:generate --no-interaction
           devbox run -- npm run build
 
-      - name: Install Chromium
-        run: devbox run -- npm run browser:install:ci
-
       - name: Run browser smoke tests
         run: devbox run -- composer test:browser
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: browser-smoke-failure
+          path: |
+            playwright-report
+            test-results
+            tests/Browser/Screenshots
+          if-no-files-found: ignore
+          retention-days: 7
 
   workflow-integrity:
     name: Workflow integrity
@@ -183,8 +161,10 @@ jobs:
         run: |
           shellcheck .github/scripts/*.sh
           shellcheck devbox.d/*.sh
+          shellcheck docker/entrypoint.sh
           bash -n .github/scripts/*.sh
           bash -n devbox.d/*.sh
+          bash -n docker/entrypoint.sh
 
       - name: Check GitHub Actions workflows
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/*.yml
