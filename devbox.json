@@ -8,6 +8,11 @@
         "sqlite@3.51.2"
     ],
     "env": {
+        "DOCTOR_EXPECTED_COMPOSER": "2.10.1",
+        "DOCTOR_EXPECTED_NODE": "v24.18.0",
+        "DOCTOR_EXPECTED_NPM": "11.16.0",
+        "DOCTOR_EXPECTED_PHP": "8.5.7",
+        "DOCTOR_EXPECTED_POSTGRES": "18.3",
         "PGPORT": "54320",
         "TZ": "UTC",
         "XDEBUG_MODE": "off"

@@ -2,7 +2,7 @@ pre-commit:
   commands:
     php:
       glob: '*.php'
-      run: vendor/bin/pint --dirty {staged_files}
+      run: vendor/bin/pint {staged_files}
       stage_fixed: true
     eslint:
       glob: '*.{js,jsx,ts,tsx}'

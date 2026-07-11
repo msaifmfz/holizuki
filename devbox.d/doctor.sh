@@ -45,17 +45,18 @@ check 'public storage is linked' test -L public/storage
 check 'Laravel uses PostgreSQL' bash -o pipefail -c \
     "php artisan config:show database.default --no-interaction | grep -Eq 'pgsql[[:space:]]*$'"
 
-expect_value 'PHP version' '8.5.7' "$(php -r 'echo PHP_VERSION;')"
+expect_value 'PHP version' "${DOCTOR_EXPECTED_PHP:?}" "$(php -r 'echo PHP_VERSION;')"
 # shellcheck disable=SC2016
 check 'required PHP extensions are loaded' php -r \
     '$required = ["curl", "dom", "fileinfo", "intl", "mbstring", "pcntl", "pdo_pgsql", "pdo_sqlite", "sockets", "sodium", "xml", "xmlwriter", "xdebug", "zip"]; $missing = array_values(array_filter($required, static fn (string $extension): bool => ! extension_loaded($extension))); if ($missing !== []) { fwrite(STDERR, "Missing PHP extensions: ".implode(", ", $missing).PHP_EOL); exit(1); }'
-expect_value 'Composer version' '2.10.1' \
+expect_value 'Composer version' "${DOCTOR_EXPECTED_COMPOSER:?}" \
     "$(composer --version --no-ansi 2>/dev/null | awk 'NR == 1 { print $3 }')"
-expect_value 'Node.js version' 'v24.18.0' "$(node --version)"
-expect_value 'npm version' '11.16.0' "$(npm --version)"
+expect_value 'Node.js version' "${DOCTOR_EXPECTED_NODE:?}" "$(node --version)"
+expect_value 'npm version' "${DOCTOR_EXPECTED_NPM:?}" "$(npm --version)"
 expect_value 'Node.js timezone' 'UTC' \
     "$(node -e 'process.stdout.write(Intl.DateTimeFormat().resolvedOptions().timeZone)')"
-expect_value 'PostgreSQL client version' '18.3' "$(psql --version | awk '{ print $3 }')"
+expect_value 'PostgreSQL client version' "${DOCTOR_EXPECTED_POSTGRES:?}" \
+    "$(psql --version | awk '{ print $3 }')"
 
 check 'PostgreSQL accepts local connections' pg_isready \
     --host=127.0.0.1 \
