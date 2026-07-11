@@ -2,7 +2,7 @@
     "$schema": "https://www.schemastore.org/package.json",
     "private": true,
     "type": "module",
-    "packageManager": "npm@11.6.4",
+    "packageManager": "npm@11.16.0",
     "engines": {
         "node": ">=24 <25",
         "npm": ">=11 <12"
@@ -15,8 +15,8 @@
         "check": "npm run format:check && npm run lint:check && npm run types:check && npm run dead-code && npm run test && npm run security:check",
         "dead-code": "knip",
         "dev": "vite",
-        "format": "prettier --write resources/ .github/ package.json tsconfig.json eslint.config.js vite.config.ts vitest.config.ts knip.json lefthook.yml",
-        "format:check": "prettier --check resources/ .github/ package.json tsconfig.json eslint.config.js vite.config.ts vitest.config.ts knip.json lefthook.yml",
+        "format": "prettier --write resources/ .github/ package.json devbox.json tsconfig.json eslint.config.js vite.config.ts vitest.config.ts knip.json lefthook.yml",
+        "format:check": "prettier --check resources/ .github/ package.json devbox.json tsconfig.json eslint.config.js vite.config.ts vitest.config.ts knip.json lefthook.yml",
         "lint": "eslint . --fix",
         "lint:check": "eslint .",
         "prepare": "lefthook install",

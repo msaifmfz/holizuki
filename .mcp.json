@@ -1,8 +1,14 @@
 {
     "mcpServers": {
         "laravel-boost": {
-            "command": "php",
+            "command": "env",
             "args": [
+                "DEVBOX_USE_VERSION=0.17.5",
+                "devbox",
+                "run",
+                "--quiet",
+                "--",
+                "php",
                 "artisan",
                 "boost:mcp"
             ]

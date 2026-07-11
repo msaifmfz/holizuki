@@ -1,5 +1,8 @@
 .env
 .env.*
+.devbox
+.direnv
+.envrc
 .git
 .github
 .idea
@@ -12,6 +15,9 @@ coverage
 database/database.sqlite
 deploy
 docs
+devbox.d
+devbox.json
+devbox.lock
 node_modules
 playwright-report
 public/build

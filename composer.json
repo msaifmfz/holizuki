@@ -55,12 +55,8 @@
     },
     "scripts": {
         "setup": [
-            "composer install",
-            "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
-            "@php artisan key:generate",
-            "@php artisan migrate --force",
-            "npm ci",
-            "npm run build"
+            "Composer\\Config::disableProcessTimeout",
+            "DEVBOX_USE_VERSION=0.17.5 devbox run setup"
         ],
         "dev": [
             "Composer\\Config::disableProcessTimeout",
@@ -106,17 +102,33 @@
             "@security:check"
         ],
         "test": [
+            "@putenv APP_ENV=testing",
+            "@putenv DB_CONNECTION=sqlite",
+            "@putenv DB_DATABASE=:memory:",
+            "@putenv DB_URL=",
             "@php artisan config:clear --ansi",
             "@php artisan test --compact"
         ],
         "test:coverage": [
+            "@putenv APP_ENV=testing",
+            "@putenv DB_CONNECTION=sqlite",
+            "@putenv DB_DATABASE=:memory:",
+            "@putenv DB_URL=",
             "@putenv XDEBUG_MODE=coverage",
             "@php -d memory_limit=1G vendor/bin/pest --coverage --min=90"
         ],
         "test:browser": [
+            "@putenv APP_ENV=testing",
+            "@putenv DB_CONNECTION=sqlite",
+            "@putenv DB_DATABASE=:memory:",
+            "@putenv DB_URL=",
             "pest tests/Browser"
         ],
         "test:mutation": [
+            "@putenv APP_ENV=testing",
+            "@putenv DB_CONNECTION=sqlite",
+            "@putenv DB_DATABASE=:memory:",
+            "@putenv DB_URL=",
             "@putenv XDEBUG_MODE=coverage",
             "@php -d memory_limit=1G vendor/bin/pest --mutate --everything --parallel --min=30"
         ],
