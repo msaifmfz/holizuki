@@ -11,3 +11,37 @@ test('the development server uses the canonical local origin', function (): void
         ->expectsOutputToContain('php artisan serve --host=localhost --port=8000 --tries=1')
         ->assertExitCode(0);
 });
+
+test('devbox defines the canonical local environment and workflows', function (): void {
+    $devbox = json_decode(
+        file_get_contents(base_path('devbox.json')),
+        true,
+        flags: JSON_THROW_ON_ERROR,
+    );
+    $composer = json_decode(
+        file_get_contents(base_path('composer.json')),
+        true,
+        flags: JSON_THROW_ON_ERROR,
+    );
+
+    expect($devbox['env']['PGPORT'])->toBe('54320')
+        ->and($devbox['shell']['scripts'])->toHaveKeys([
+            'setup',
+            'dev',
+            'doctor',
+            'check',
+            'test',
+            'test:browser',
+            'services:stop',
+        ])
+        ->and($devbox['shell']['scripts']['setup'])->toContain(
+            '. devbox.d/local-env.sh',
+        )
+        ->and($devbox['shell']['scripts']['dev'])->toContain(
+            '. devbox.d/local-env.sh',
+        )
+        ->and($devbox['shell']['scripts']['doctor'])->toBe('bash devbox.d/doctor.sh')
+        ->and($composer['scripts']['setup'])->toContain(
+            'DEVBOX_USE_VERSION=0.17.5 devbox run setup',
+        );
+});
