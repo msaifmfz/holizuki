@@ -31,7 +31,15 @@ production_php_version="${BASH_REMATCH[1]}"
 grep -Fq "ARG COMPOSER_BASE_IMAGE=\"$COMPOSER_BASE_IMAGE\"" "$repository_root/Dockerfile"
 grep -Fq "ARG NODE_BASE_IMAGE=\"$NODE_BASE_IMAGE\"" "$repository_root/Dockerfile"
 grep -Fq "ARG PHP_BASE_IMAGE=\"$PHP_BASE_IMAGE_PRODUCTION\"" "$repository_root/Dockerfile"
-grep -Fq "  phpVersion: \"$production_php_version\"" "$repository_root/deploy/helm/holizuki/values.yaml"
+
+configured_php_version="$(sed -n 's/^[[:space:]]*phpVersion:[[:space:]]*//p' "$repository_root/deploy/helm/holizuki/values.yaml")"
+
+if [[ "$configured_php_version" != "\"$production_php_version\"" \
+    && "$configured_php_version" != "'$production_php_version'" ]]; then
+    printf 'Expected Helm PHP version %s.\n' "$production_php_version" >&2
+    exit 1
+fi
+
 grep -Fq "  image: $POSTGRES_IMAGE" "$repository_root/deploy/helm/platform/values.yaml"
 grep -Fq "node-name: holizuki-01" "$repository_root/deploy/server/k3s-config.yaml"
 

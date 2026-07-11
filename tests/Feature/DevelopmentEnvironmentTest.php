@@ -34,12 +34,8 @@ test('devbox defines the canonical local environment and workflows', function ()
             'test:browser',
             'services:stop',
         ])
-        ->and($devbox['shell']['scripts']['setup'])->toContain(
-            '. devbox.d/local-env.sh',
-        )
-        ->and($devbox['shell']['scripts']['dev'])->toContain(
-            '. devbox.d/local-env.sh',
-        )
+        ->and($devbox['shell']['scripts']['setup'])->toBe('bash devbox.d/setup.sh')
+        ->and($devbox['shell']['scripts']['dev'])->toBe('bash devbox.d/dev.sh')
         ->and($devbox['shell']['scripts']['doctor'])->toBe('bash devbox.d/doctor.sh')
         ->and($composer['scripts']['setup'])->toContain(
             'DEVBOX_USE_VERSION=0.17.5 devbox run setup',

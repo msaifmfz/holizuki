@@ -17,33 +17,8 @@
             "if [ \"${CI:-false}\" != true ] && [ ! -f .env ]; then echo 'Local environment is not initialized; run: devbox run setup' >&2; fi"
         ],
         "scripts": {
-            "setup": [
-                "set -euo pipefail",
-                ". devbox.d/local-env.sh",
-                "test -f .env || cp .env.example .env",
-                "composer install --no-interaction --no-progress --prefer-dist",
-                "php artisan config:clear --no-interaction",
-                "php artisan config:show database.default --no-interaction | grep -Eq 'pgsql[[:space:]]*$'",
-                "npm ci",
-                "if ! grep -Eq '^APP_KEY=base64:.+' .env; then php artisan key:generate --no-interaction; fi",
-                "if [ ! -s \"$PGDATA/PG_VERSION\" ]; then initdb --username=holizuki --auth-local=trust --auth-host=trust --encoding=UTF8 --no-locale --set=timezone=UTC; fi",
-                "if ! pg_isready --host=127.0.0.1 --port=\"$PGPORT\" --username=holizuki --quiet; then devbox services start postgresql; fi",
-                "for attempt in $(seq 1 30); do pg_isready --host=127.0.0.1 --port=\"$PGPORT\" --username=holizuki --quiet && break; sleep 1; done",
-                "pg_isready --host=127.0.0.1 --port=\"$PGPORT\" --username=holizuki --quiet",
-                "psql --host=127.0.0.1 --port=\"$PGPORT\" --username=holizuki --dbname=postgres --tuples-only --no-align --command=\"SELECT 1 FROM pg_database WHERE datname = 'holizuki'\" | grep -qx 1 || createdb --host=127.0.0.1 --port=\"$PGPORT\" --username=holizuki holizuki",
-                "php artisan migrate --force --no-interaction",
-                "test -L public/storage || php artisan storage:link --no-interaction",
-                "npm run prepare",
-                "npm run build"
-            ],
-            "dev": [
-                "set -euo pipefail",
-                ". devbox.d/local-env.sh",
-                "php artisan config:clear --no-interaction",
-                "if ! pg_isready --host=127.0.0.1 --port=\"$PGPORT\" --username=holizuki --quiet; then devbox services start postgresql; fi",
-                "pg_isready --host=127.0.0.1 --port=\"$PGPORT\" --username=holizuki --dbname=holizuki --quiet || { echo 'PostgreSQL is not initialized; run: devbox run setup' >&2; exit 1; }",
-                "composer dev"
-            ],
+            "setup": "bash devbox.d/setup.sh",
+            "dev": "bash devbox.d/dev.sh",
             "doctor": "bash devbox.d/doctor.sh",
             "check": "composer ci:check",
             "test": "composer test",
