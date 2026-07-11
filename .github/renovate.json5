@@ -1,0 +1,42 @@
+{
+    $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+    extends: ['config:recommended', 'docker:pinDigests'],
+    timezone: 'UTC',
+    schedule: ['before 7am on monday'],
+    minimumReleaseAge: '7 days',
+    prConcurrentLimit: 5,
+    // Mirror the previous Dependabot behavior: one grouped weekly PR per ecosystem.
+    packageRules: [
+        {
+            matchManagers: ['composer'],
+            groupName: 'composer',
+        },
+        {
+            matchManagers: ['npm'],
+            groupName: 'npm',
+        },
+        {
+            matchManagers: ['github-actions'],
+            groupName: 'github-actions',
+        },
+        {
+            matchManagers: ['dockerfile', 'custom.regex'],
+            groupName: 'container-images',
+        },
+        {
+            matchManagers: ['devbox'],
+            groupName: 'devbox',
+        },
+    ],
+    customManagers: [
+        {
+            customType: 'regex',
+            description: 'Update pinned image digests in deploy/runtime-images.env',
+            managerFilePatterns: ['/^deploy/runtime-images\\.env$/'],
+            matchStrings: [
+                '(?<depName>[a-z0-9./-]+):(?<currentValue>[A-Za-z0-9._-]+)@(?<currentDigest>sha256:[a-f0-9]{64})',
+            ],
+            datasourceTemplate: 'docker',
+        },
+    ],
+}
