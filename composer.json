@@ -1,8 +1,8 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/react-starter-kit",
+    "name": "holizuki/holizuki",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
+    "description": "Holizuki, a Laravel and Inertia React application.",
     "keywords": [
         "laravel",
         "framework"
@@ -98,8 +98,7 @@
             "@types:check",
             "@rector:check",
             "@dependencies:check",
-            "@type-coverage:check",
-            "@security:check"
+            "@type-coverage:check"
         ],
         "test": [
             "@putenv APP_ENV=testing",
