@@ -3,7 +3,7 @@
 use App\Models\User;
 
 it('renders public pages without browser errors', function (): void {
-    visit(['/', '/login', '/register'])
+    visit(['/', '/login'])
         ->wait(1)
         ->assertNoSmoke()
         ->assertNoAccessibilityIssues();

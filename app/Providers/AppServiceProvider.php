@@ -2,11 +2,13 @@
 
 namespace App\Providers;
 
+use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\DevCommands;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 use Override;
@@ -33,6 +35,7 @@ class AppServiceProvider extends ServiceProvider
         DevCommands::artisan('serve --host=localhost --port=8000 --tries=1', 'server');
 
         $this->configureDefaults();
+        $this->configureAuthorization();
     }
 
     /**
@@ -57,5 +60,10 @@ class AppServiceProvider extends ServiceProvider
                 ->uncompromised()
             : null,
         );
+    }
+
+    private function configureAuthorization(): void
+    {
+        Gate::before(static fn (User $user): ?bool => $user->isAdministrator() ? true : null);
     }
 }
