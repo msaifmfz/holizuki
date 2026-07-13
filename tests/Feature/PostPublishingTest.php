@@ -5,6 +5,8 @@ use App\Enums\PostStatus;
 use App\Models\Post;
 use App\Models\User;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\Storage;
+use Inertia\Testing\AssertableInertia;
 
 beforeEach(function (): void {
     $this->user = User::factory()->create();
@@ -12,6 +14,32 @@ beforeEach(function (): void {
         'type' => 'doc',
         'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Publishable body']]]],
     ];
+});
+
+test('administrators can preview a post before publishing', function (): void {
+    Storage::fake('public');
+    $post = Post::factory()->for($this->user, 'author')->create([
+        'title' => null,
+        'body' => $this->body,
+        'featured_image_path' => 'posts/preview.webp',
+        'featured_image_alt' => 'Preview image',
+    ]);
+
+    $this->actingAs($this->user)
+        ->get(route('posts.preview', $post))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page): AssertableInertia => $page
+            ->component('posts/preview')
+            ->where('revision', null)
+            ->has('post', fn (AssertableInertia $postData): AssertableInertia => $postData
+                ->where('id', $post->id)
+                ->where('title', 'Untitled post')
+                ->where('excerpt', $post->excerpt)
+                ->where('body', $this->body)
+                ->where('featured_image_url', Storage::disk('public')->url('posts/preview.webp'))
+                ->where('featured_image_alt', 'Preview image')
+                ->where('published_at', null)
+                ->etc()));
 });
 
 test('publishing requires every editorial field and featured image', function (): void {

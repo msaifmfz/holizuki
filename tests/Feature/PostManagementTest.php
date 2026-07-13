@@ -4,6 +4,7 @@ use App\Enums\PostRevisionEvent;
 use App\Enums\PostStatus;
 use App\Models\Post;
 use App\Models\User;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia;
 
 beforeEach(function (): void {
@@ -40,6 +41,53 @@ test('administrators can list and create an immediate draft', function (): void 
         ->and($post->status)->toBe(PostStatus::Draft)
         ->and($post->author_id)->toBe($this->user->id)
         ->and($post->slug)->toStartWith('untitled-post-');
+});
+
+test('administrators can filter posts by editorial status', function (): void {
+    $draft = Post::factory()->for($this->user, 'author')->create(['title' => 'Draft post']);
+    $scheduled = Post::factory()->scheduled()->for($this->user, 'author')->create(['title' => 'Scheduled post']);
+    $published = Post::factory()->published()->for($this->user, 'author')->create(['title' => 'Published post']);
+
+    foreach ([
+        'draft' => $draft,
+        'scheduled' => $scheduled,
+        'published' => $published,
+    ] as $status => $post) {
+        $this->actingAs($this->user)
+            ->get(route('posts.index', ['status' => $status]))
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page): AssertableInertia => $page
+                ->component('posts/index')
+                ->where('filters.status', $status)
+                ->has('posts.data', 1)
+                ->where('posts.data.0.id', $post->id));
+    }
+});
+
+test('administrators can open a scheduled post in the editor', function (): void {
+    Storage::fake('public');
+    $post = Post::factory()->scheduled()->for($this->user, 'author')->create([
+        'updated_by_id' => $this->user->id,
+        'title' => null,
+        'featured_image_path' => 'posts/editor.webp',
+        'slug_is_manual' => true,
+    ]);
+
+    $this->actingAs($this->user)
+        ->get(route('posts.edit', $post))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page): AssertableInertia => $page
+            ->component('posts/edit')
+            ->has('post', fn (AssertableInertia $postData): AssertableInertia => $postData
+                ->where('id', $post->id)
+                ->where('title', 'Untitled post')
+                ->where('status', 'scheduled')
+                ->where('author', $this->user->name)
+                ->where('last_editor', $this->user->name)
+                ->where('featured_image_url', Storage::disk('public')->url('posts/editor.webp'))
+                ->where('slug_is_manual', true)
+                ->where('lock_version', 0)
+                ->etc()));
 });
 
 test('autosave updates a draft and manual save creates a revision', function (): void {
@@ -111,6 +159,32 @@ test('posts move to trash, restore as drafts, and can be permanently deleted', f
     $this->actingAs($this->user)->delete(route('posts.destroy', $post));
     $this->actingAs($this->user)->delete(route('posts.force-destroy', $post))->assertRedirect(route('posts.trash.index'));
     $this->assertModelMissing($post);
+});
+
+test('administrators can search the trash', function (): void {
+    $post = Post::factory()->for($this->user, 'author')->create([
+        'title' => null,
+        'slug' => 'discarded-draft',
+    ]);
+    $post->delete();
+
+    $this->actingAs($this->user)
+        ->get(route('posts.trash.index', ['search' => 'discarded']))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page): AssertableInertia => $page
+            ->component('posts/index')
+            ->where('trash', true)
+            ->where('filters.search', 'discarded')
+            ->where('counts.trash', 1)
+            ->has('posts.data', 1, fn (AssertableInertia $postData): AssertableInertia => $postData
+                ->where('id', $post->id)
+                ->where('title', 'Untitled post')
+                ->where('status', 'trashed')
+                ->where('author', $this->user->name)
+                ->where('last_editor', null)
+                ->where('scheduled_at', null)
+                ->where('published_at', null)
+                ->etc()));
 });
 
 test('a malformed text node without text content is rejected', function (): void {
