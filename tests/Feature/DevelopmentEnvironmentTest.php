@@ -23,6 +23,7 @@ test('devbox defines the canonical local environment and workflows', function ()
         true,
         flags: JSON_THROW_ON_ERROR,
     );
+    $lefthook = file_get_contents(base_path('lefthook.yml'));
 
     expect($devbox['env']['PGPORT'])->toBe('54320')
         ->and($devbox['shell']['scripts'])->toHaveKeys([
@@ -39,5 +40,11 @@ test('devbox defines the canonical local environment and workflows', function ()
         ->and($devbox['shell']['scripts']['doctor'])->toBe('bash devbox.d/doctor.sh')
         ->and($composer['scripts']['setup'])->toContain(
             'DEVBOX_USE_VERSION=0.17.5 devbox run setup',
-        );
+        )
+        ->and($lefthook)->toContain(
+            'run: devbox run -- composer quality',
+            'run: devbox run -- composer test:coverage',
+            'run: devbox run -- npm run check',
+        )
+        ->not->toContain('command -v composer', 'command -v npm');
 });

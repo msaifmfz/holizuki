@@ -32,25 +32,10 @@ pre-push:
   commands:
     php-quality:
       glob: '*.php'
-      run: |
-        if command -v composer >/dev/null 2>&1; then
-          composer quality
-        else
-          devbox run -- composer quality
-        fi
+      run: devbox run -- composer quality
     php-tests:
       glob: '*.php'
-      run: |
-        if command -v composer >/dev/null 2>&1; then
-          composer test:coverage
-        else
-          devbox run -- composer test:coverage
-        fi
+      run: devbox run -- composer test:coverage
     frontend:
       glob: '*.{ts,tsx,js,jsx,css}'
-      run: |
-        if command -v npm >/dev/null 2>&1; then
-          npm run check
-        else
-          devbox run -- npm run check
-        fi
+      run: devbox run -- npm run check
