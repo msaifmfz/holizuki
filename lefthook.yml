@@ -1,8 +1,15 @@
 pre-commit:
   commands:
+    check-debug:
+      glob: '*.{php,ts,tsx,js,jsx}'
+      run: |
+        if grep -nE '\bdd\(|\bdump\(|\bray\(|\bvar_dump\(|console\.log|\bdebugger\b|->only\([[:space:]]*\)|(it|test|describe)\.only\(' -- {staged_files}; then
+          echo 'Remove debug/focus statements before committing (bypass: git commit --no-verify).'
+          exit 1
+        fi
     php:
       glob: '*.php'
-      run: vendor/bin/pint {staged_files}
+      run: vendor/bin/rector process {staged_files} && vendor/bin/pint {staged_files}
       stage_fixed: true
     eslint:
       glob: '*.{js,jsx,ts,tsx}'
@@ -12,3 +19,38 @@ pre-commit:
       glob: '*.{css,js,jsx,json,ts,tsx,yaml,yml}'
       run: npx prettier --write {staged_files}
       stage_fixed: true
+
+commit-msg:
+  commands:
+    conventional:
+      run: |
+        head -1 {1} | grep -qE '^(Merge |Revert |fixup! |squash! |(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?!?: .+)' \
+          || { echo 'Commit subject must follow Conventional Commits, e.g. "feat: add X" (bypass: --no-verify).'; exit 1; }
+
+pre-push:
+  parallel: true
+  commands:
+    php-quality:
+      glob: '*.php'
+      run: |
+        if command -v composer >/dev/null 2>&1; then
+          composer quality
+        else
+          devbox run -- composer quality
+        fi
+    php-tests:
+      glob: '*.php'
+      run: |
+        if command -v composer >/dev/null 2>&1; then
+          composer test:coverage
+        else
+          devbox run -- composer test:coverage
+        fi
+    frontend:
+      glob: '*.{ts,tsx,js,jsx,css}'
+      run: |
+        if command -v npm >/dev/null 2>&1; then
+          npm run check
+        else
+          devbox run -- npm run check
+        fi
