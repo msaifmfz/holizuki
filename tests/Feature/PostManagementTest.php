@@ -1,0 +1,159 @@
+<?php
+
+use App\Enums\PostRevisionEvent;
+use App\Enums\PostStatus;
+use App\Models\Post;
+use App\Models\User;
+use Inertia\Testing\AssertableInertia;
+
+beforeEach(function (): void {
+    $this->user = User::factory()->create();
+    $this->body = [
+        'type' => 'doc',
+        'content' => [[
+            'type' => 'paragraph',
+            'content' => [['type' => 'text', 'text' => 'A useful article body.']],
+        ]],
+    ];
+});
+
+test('guests cannot access post management', function (): void {
+    $this->get(route('posts.index'))->assertRedirect(route('login'));
+});
+
+test('administrators can list and create an immediate draft', function (): void {
+    Post::factory()->for($this->user, 'author')->create(['title' => 'Existing post']);
+
+    $this->actingAs($this->user)
+        ->get(route('posts.index'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page): AssertableInertia => $page
+            ->component('posts/index')
+            ->has('posts.data', 1)
+            ->where('posts.data.0.title', 'Existing post'));
+
+    $response = $this->actingAs($this->user)->post(route('posts.store'));
+    $post = Post::latest('id')->firstOrFail();
+
+    $response->assertRedirect(route('posts.edit', $post));
+    expect($post->title)->toBe('Untitled post')
+        ->and($post->status)->toBe(PostStatus::Draft)
+        ->and($post->author_id)->toBe($this->user->id)
+        ->and($post->slug)->toStartWith('untitled-post-');
+});
+
+test('autosave updates a draft and manual save creates a revision', function (): void {
+    $post = Post::factory()->for($this->user, 'author')->create(['lock_version' => 0]);
+    $payload = [
+        'title' => 'A Better Title',
+        'slug' => $post->slug,
+        'slug_is_manual' => false,
+        'excerpt' => '',
+        'body' => $this->body,
+        'featured_image_alt' => '',
+        'lock_version' => 0,
+    ];
+
+    $this->actingAs($this->user)
+        ->patchJson(route('posts.autosave', $post), $payload)
+        ->assertOk()
+        ->assertJsonPath('slug', 'a-better-title')
+        ->assertJsonPath('lock_version', 1);
+
+    expect($post->revisions()->count())->toBe(0);
+
+    $this->actingAs($this->user)
+        ->patchJson(route('posts.update', $post), [...$payload, 'lock_version' => 1, 'excerpt' => 'Manual excerpt'])
+        ->assertOk()
+        ->assertJsonPath('lock_version', 2);
+
+    expect($post->revisions()->sole()->event)->toBe(PostRevisionEvent::Saved);
+});
+
+test('stale autosaves return a conflict and confirmed overwrite preserves the server version', function (): void {
+    $post = Post::factory()->for($this->user, 'author')->create(['lock_version' => 2, 'title' => 'Server title']);
+    $payload = [
+        'title' => 'Local title',
+        'slug' => 'local-title',
+        'slug_is_manual' => true,
+        'excerpt' => 'Excerpt',
+        'body' => $this->body,
+        'featured_image_alt' => 'Alt',
+        'lock_version' => 1,
+    ];
+
+    $this->actingAs($this->user)
+        ->patchJson(route('posts.autosave', $post), $payload)
+        ->assertConflict()
+        ->assertJsonPath('conflict.lock_version', 2);
+
+    $this->actingAs($this->user)
+        ->patchJson(route('posts.autosave', $post), [...$payload, 'force' => true])
+        ->assertOk()
+        ->assertJsonPath('lock_version', 3);
+
+    expect($post->refresh()->title)->toBe('Local title')
+        ->and($post->revisions()->sole()->title)->toBe('Server title')
+        ->and($post->revisions()->sole()->event)->toBe(PostRevisionEvent::ConflictOverwrite);
+});
+
+test('posts move to trash, restore as drafts, and can be permanently deleted', function (): void {
+    $post = Post::factory()->published()->for($this->user, 'author')->create();
+
+    $this->actingAs($this->user)->delete(route('posts.destroy', $post))->assertRedirect(route('posts.index'));
+    expect($post->refresh()->trashed())->toBeTrue()
+        ->and($post->status)->toBe(PostStatus::Draft)
+        ->and($post->scheduled_at)->toBeNull();
+
+    $this->actingAs($this->user)->post(route('posts.restore', $post))->assertRedirect(route('posts.edit', $post));
+    expect($post->refresh()->trashed())->toBeFalse()->and($post->status)->toBe(PostStatus::Draft);
+
+    $this->actingAs($this->user)->delete(route('posts.destroy', $post));
+    $this->actingAs($this->user)->delete(route('posts.force-destroy', $post))->assertRedirect(route('posts.trash.index'));
+    $this->assertModelMissing($post);
+});
+
+test('a malformed text node without text content is rejected', function (): void {
+    $post = Post::factory()->for($this->user, 'author')->create(['lock_version' => 0]);
+
+    $this->actingAs($this->user)
+        ->patchJson(route('posts.autosave', $post), [
+            'title' => 'Title',
+            'slug' => 'title',
+            'slug_is_manual' => true,
+            'excerpt' => '',
+            'body' => ['type' => 'doc', 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text']]]]],
+            'featured_image_alt' => '',
+            'lock_version' => 0,
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('body');
+});
+
+test('a manual slug that reduces to empty falls back to a generated slug', function (): void {
+    $post = Post::factory()->for($this->user, 'author')->create(['lock_version' => 0]);
+
+    $this->actingAs($this->user)
+        ->patchJson(route('posts.autosave', $post), [
+            'title' => 'Meaningful Title',
+            'slug' => '///',
+            'slug_is_manual' => true,
+            'excerpt' => '',
+            'body' => $this->body,
+            'featured_image_alt' => '',
+            'lock_version' => 0,
+        ])
+        ->assertOk();
+
+    expect($post->refresh()->slug)->not->toBe('');
+});
+
+test('search does not treat wildcard characters as wildcards', function (): void {
+    Post::factory()->for($this->user, 'author')->create(['title' => 'Alpha']);
+    Post::factory()->for($this->user, 'author')->create(['title' => 'Beta']);
+
+    $this->actingAs($this->user)
+        ->get(route('posts.index', ['search' => '%']))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page): AssertableInertia => $page->has('posts.data', 0));
+});

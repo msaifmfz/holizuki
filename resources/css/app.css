@@ -145,3 +145,53 @@
         @apply bg-background text-foreground;
     }
 }
+
+@layer components {
+    .rich-text-content .tiptap {
+        @apply min-h-72 px-5 py-4 text-base leading-7 outline-none;
+    }
+
+    .rich-text-content .tiptap h2 {
+        @apply mt-8 mb-3 text-2xl font-semibold tracking-tight first:mt-0;
+    }
+
+    .rich-text-content .tiptap h3 {
+        @apply mt-6 mb-2 text-xl font-semibold tracking-tight;
+    }
+
+    .rich-text-content .tiptap p {
+        @apply my-3;
+    }
+
+    .rich-text-content .tiptap ul {
+        @apply my-4 list-disc pl-6;
+    }
+
+    .rich-text-content .tiptap ol {
+        @apply my-4 list-decimal pl-6;
+    }
+
+    .rich-text-content .tiptap blockquote {
+        @apply my-5 border-l-4 pl-4 text-muted-foreground italic;
+    }
+
+    .rich-text-content .tiptap code {
+        @apply rounded bg-muted px-1.5 py-0.5 font-mono text-sm;
+    }
+
+    .rich-text-content .tiptap pre {
+        @apply my-5 overflow-x-auto rounded-lg bg-neutral-950 p-4 text-neutral-100;
+    }
+
+    .rich-text-content .tiptap pre code {
+        @apply bg-transparent p-0 text-inherit;
+    }
+
+    .rich-text-content .tiptap a {
+        @apply text-foreground underline underline-offset-4;
+    }
+
+    .rich-text-content .tiptap hr {
+        @apply my-8 border-border;
+    }
+}
