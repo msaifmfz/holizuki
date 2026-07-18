@@ -9,6 +9,7 @@ use App\Enums\PostStatus;
 use App\Exceptions\PostEditConflictException;
 use App\Models\Post;
 use App\Models\User;
+use App\Support\PublicCache;
 use Illuminate\Support\Facades\DB;
 
 class UnpublishPost
@@ -17,7 +18,7 @@ class UnpublishPost
 
     public function handle(Post $post, User $editor, int $expectedVersion): Post
     {
-        return DB::transaction(function () use ($post, $editor, $expectedVersion): Post {
+        $unpublished = DB::transaction(function () use ($post, $editor, $expectedVersion): Post {
             $current = Post::query()->whereKey($post->id)->lockForUpdate()->firstOrFail();
 
             if ($current->lock_version !== $expectedVersion) {
@@ -34,5 +35,9 @@ class UnpublishPost
 
             return $current->refresh();
         });
+
+        PublicCache::flush();
+
+        return $unpublished;
     }
 }

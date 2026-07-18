@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Database\Factories;
 
 use App\Enums\PostStatus;
+use App\Models\Category;
 use App\Models\Post;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -24,6 +25,7 @@ class PostFactory extends Factory
         return [
             'author_id' => User::factory(),
             'updated_by_id' => null,
+            'category_id' => Category::factory(),
             'title' => fake()->sentence(6),
             'slug' => fake()->unique()->slug(),
             'excerpt' => fake()->paragraph(),

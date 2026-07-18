@@ -1,18 +1,50 @@
 <?php
 
+use App\Models\Category;
+use App\Models\ContactSubmission;
 use App\Models\Post;
+use App\Models\Tag;
 use App\Models\User;
 
 it('renders public pages without browser errors', function (): void {
-    visit(['/', '/login'])
+    $author = User::factory()->author()->create(['author_slug' => 'smoke-author']);
+    $category = Category::factory()->create(['slug' => 'smoke-category']);
+    $post = Post::factory()->published()->for($author, 'author')->create([
+        'slug' => 'smoke-post',
+        'category_id' => $category->id,
+        'featured_image_path' => null,
+    ]);
+    $post->tags()->attach(Tag::factory()->create(['slug' => 'smoke-tag']));
+
+    visit([
+        '/',
+        '/posts/smoke-post',
+        '/categories/smoke-category',
+        '/tags/smoke-tag',
+        '/authors/smoke-author',
+        '/search?q=smoke',
+        '/about',
+        '/contact',
+        '/privacy',
+        '/terms',
+        '/login',
+    ])
         ->wait(1)
         ->assertNoSmoke()
         ->assertNoAccessibilityIssues();
 });
 
+it('renders the custom 404 page without browser errors', function (): void {
+    visit('/this-page-does-not-exist')
+        ->wait(1)
+        ->assertSee('404')
+        ->assertNoSmoke();
+});
+
 it('renders authenticated pages without browser errors', function (): void {
     $user = User::factory()->create();
     $post = Post::factory()->for($user, 'author')->create();
+    ContactSubmission::factory()->create();
     $this->actingAs($user);
 
     visit([
@@ -24,6 +56,9 @@ it('renders authenticated pages without browser errors', function (): void {
         "/posts/{$post->id}/edit",
         "/posts/{$post->id}/preview",
         "/posts/{$post->id}/revisions",
+        '/categories',
+        '/tags',
+        '/inbox',
     ])->wait(1)
         ->assertNoSmoke()
         ->assertNoAccessibilityIssues();

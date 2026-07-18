@@ -17,6 +17,12 @@
         'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
         'Noto Color Emoji';
 
+    /* Editorial voice for the public blog: a system serif stack, so no
+       webfont payload is added for headlines. */
+    --font-display:
+        ui-serif, 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia,
+        'Times New Roman', serif;
+
     --radius-lg: var(--radius);
     --radius-md: calc(var(--radius) - 2px);
     --radius-sm: calc(var(--radius) - 4px);
@@ -193,5 +199,29 @@
 
     .rich-text-content .tiptap hr {
         @apply my-8 border-border;
+    }
+}
+
+/* Public blog signature: a soft lunar halo (the "zuki" in Holizuki) used
+   behind hero imagery, and a small moon disc marking section labels. */
+@layer components {
+    .moon-glow {
+        background: radial-gradient(
+            closest-side,
+            color-mix(in oklab, var(--foreground) 13%, transparent),
+            transparent 72%
+        );
+    }
+
+    .moon-dot {
+        display: inline-block;
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 9999px;
+        background: radial-gradient(
+            circle at 33% 33%,
+            var(--foreground) 15%,
+            color-mix(in oklab, var(--foreground) 45%, transparent) 100%
+        );
     }
 }

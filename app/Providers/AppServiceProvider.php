@@ -4,13 +4,18 @@ namespace App\Providers;
 
 use App\Models\User;
 use Carbon\CarbonImmutable;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\DevCommands;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use Inertia\ExceptionResponse;
+use Inertia\Inertia;
 use Override;
 
 class AppServiceProvider extends ServiceProvider
@@ -36,6 +41,8 @@ class AppServiceProvider extends ServiceProvider
 
         $this->configureDefaults();
         $this->configureAuthorization();
+        $this->configureRateLimiting();
+        $this->configureErrorPages();
     }
 
     /**
@@ -65,5 +72,35 @@ class AppServiceProvider extends ServiceProvider
     private function configureAuthorization(): void
     {
         Gate::before(static fn (User $user): ?bool => $user->isAdministrator() ? true : null);
+    }
+
+    private function configureRateLimiting(): void
+    {
+        RateLimiter::for('contact', static fn (Request $request): Limit => Limit::perHour(5)->by((string) $request->ip()));
+    }
+
+    /**
+     * Render styled Inertia error pages instead of the framework defaults.
+     *
+     * 403/404 always render the error page; 500/503 keep the framework's
+     * debug output in local and testing environments.
+     */
+    private function configureErrorPages(): void
+    {
+        Inertia::handleExceptionsUsing(function (ExceptionResponse $response): ?ExceptionResponse {
+            if ($response->request->expectsJson()) {
+                return null;
+            }
+
+            $status = $response->statusCode();
+            $always = in_array($status, [403, 404], true);
+            $productionOnly = in_array($status, [500, 503], true) && ! $this->app->environment(['local', 'testing']);
+
+            if ($always || $productionOnly) {
+                return $response->render('error', ['status' => $status])->withSharedData();
+            }
+
+            return null;
+        });
     }
 }

@@ -12,6 +12,7 @@ import {
     index as trashIndex,
     restore,
 } from '@/actions/App/Http/Controllers/PostTrashController';
+import Pagination from '@/components/pagination';
 import PostStatusBadge from '@/components/post-status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -245,34 +246,7 @@ export default function PostsIndex({ posts, filters, counts, trash }: Props) {
                     </CardContent>
                 </Card>
 
-                {posts.last_page > 1 && (
-                    <nav
-                        className="flex flex-wrap justify-center gap-1"
-                        aria-label="Post pages"
-                    >
-                        {posts.links.map(
-                            (link) =>
-                                link.url && (
-                                    <Button
-                                        key={link.label}
-                                        asChild
-                                        size="sm"
-                                        variant={
-                                            link.active ? 'default' : 'outline'
-                                        }
-                                    >
-                                        <Link
-                                            href={link.url}
-                                            preserveScroll
-                                            dangerouslySetInnerHTML={{
-                                                __html: link.label,
-                                            }}
-                                        />
-                                    </Button>
-                                ),
-                        )}
-                    </nav>
-                )}
+                <Pagination paginator={posts} label="Post pages" />
             </div>
         </>
     );

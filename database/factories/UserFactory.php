@@ -31,11 +31,27 @@ class UserFactory extends Factory
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'role' => UserRole::Administrator,
+            'author_slug' => null,
+            'avatar_path' => null,
+            'bio' => null,
+            'social_links' => null,
             'remember_token' => Str::random(10),
             'two_factor_secret' => null,
             'two_factor_recovery_codes' => null,
             'two_factor_confirmed_at' => null,
         ];
+    }
+
+    /**
+     * Indicate that the model has a public author profile.
+     */
+    public function author(): static
+    {
+        return $this->state(fn (): array => [
+            'author_slug' => fake()->unique()->slug(2),
+            'bio' => fake()->sentence(12),
+            'social_links' => ['website' => fake()->url()],
+        ]);
     }
 
     /**

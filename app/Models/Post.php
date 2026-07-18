@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Override;
@@ -20,6 +21,7 @@ use Override;
  * @property int $id
  * @property int|null $author_id
  * @property int|null $updated_by_id
+ * @property int|null $category_id
  * @property string|null $title
  * @property string $slug
  * @property bool $slug_is_manual
@@ -37,7 +39,7 @@ use Override;
  * @property CarbonInterface|null $deleted_at
  */
 #[Fillable([
-    'author_id', 'updated_by_id', 'title', 'slug', 'slug_is_manual', 'excerpt', 'body',
+    'author_id', 'updated_by_id', 'category_id', 'title', 'slug', 'slug_is_manual', 'excerpt', 'body',
     'featured_image_path', 'featured_image_alt', 'status', 'scheduled_at', 'published_at',
     'slug_locked_at', 'lock_version',
 ])]
@@ -66,10 +68,28 @@ class Post extends Model
         return $this->belongsTo(User::class, 'updated_by_id');
     }
 
+    /** @return BelongsTo<Category, $this> */
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(Category::class);
+    }
+
+    /** @return BelongsToMany<Tag, $this> */
+    public function tags(): BelongsToMany
+    {
+        return $this->belongsToMany(Tag::class);
+    }
+
     /** @return HasMany<PostRevision, $this> */
     public function revisions(): HasMany
     {
         return $this->hasMany(PostRevision::class);
+    }
+
+    /** @param Builder<Post> $query */
+    protected function scopePublished(Builder $query): void
+    {
+        $query->where('status', PostStatus::Published);
     }
 
     /** @param Builder<Post> $query */
@@ -89,6 +109,16 @@ class Post extends Model
 
         $query->where(function (Builder $builder) use ($pattern): void {
             $builder->whereLike('title', $pattern)->orWhereLike('slug', $pattern);
+        });
+    }
+
+    /** @param Builder<Post> $query */
+    protected function scopePublicSearch(Builder $query, string $term): void
+    {
+        $pattern = '%'.addcslashes($term, '%_\\').'%';
+
+        $query->where(function (Builder $builder) use ($pattern): void {
+            $builder->whereLike('title', $pattern)->orWhereLike('excerpt', $pattern);
         });
     }
 

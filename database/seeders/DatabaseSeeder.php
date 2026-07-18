@@ -22,6 +22,11 @@ class DatabaseSeeder extends Seeder
         User::factory()->create([
             'name' => 'Test User',
             'email' => 'test@example.com',
+            'author_slug' => 'test-user',
+            'bio' => 'Writes about building and shipping software.',
+            'social_links' => ['website' => 'https://example.com'],
         ]);
+
+        $this->call(PostSeeder::class);
     }
 }

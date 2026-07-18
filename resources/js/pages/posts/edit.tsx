@@ -25,6 +25,7 @@ import FeaturedImageUploader from '@/components/featured-image-uploader';
 import InputError from '@/components/input-error';
 import PostStatusBadge from '@/components/post-status-badge';
 import RichTextEditor from '@/components/rich-text-editor';
+import TagMultiSelect from '@/components/tag-multi-select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
@@ -37,6 +38,13 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import {
     errorText,
     formatDate,
     localDateTimeToUtc,
@@ -45,6 +53,7 @@ import {
 } from '@/lib/post-editor';
 import type {
     AutosaveResponse,
+    EditorOption,
     PostConflict,
     PostEditorData,
     RichTextDocument,
@@ -57,6 +66,9 @@ type EditorForm = {
     excerpt: string;
     body: RichTextDocument | null;
     featured_image_alt: string;
+    category_id: number | null;
+    author_id: number | null;
+    tags: string[];
     lock_version: number;
     force: boolean;
 };
@@ -70,7 +82,17 @@ type PublishingResponse = {
     updated_at: string;
 };
 
-export default function EditPost({ post }: { post: PostEditorData }) {
+export default function EditPost({
+    post,
+    categories,
+    authors,
+    tagSuggestions,
+}: {
+    post: PostEditorData;
+    categories: EditorOption[];
+    authors: EditorOption[];
+    tagSuggestions: string[];
+}) {
     setLayoutProps({
         breadcrumbs: [
             { title: 'Posts', href: index() },
@@ -93,6 +115,9 @@ export default function EditPost({ post }: { post: PostEditorData }) {
         excerpt: post.excerpt ?? '',
         body: post.body,
         featured_image_alt: post.featured_image_alt ?? '',
+        category_id: post.category_id,
+        author_id: post.author_id,
+        tags: post.tags,
         lock_version: post.lock_version,
         force: false,
     });
@@ -460,6 +485,105 @@ export default function EditPost({ post }: { post: PostEditorData }) {
                 </main>
 
                 <aside className="grid content-start gap-6">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Organization</CardTitle>
+                            <CardDescription>
+                                A category is required to publish. Tags are
+                                optional.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid gap-4">
+                            <div className="grid gap-2">
+                                <Label htmlFor="category">Category</Label>
+                                <Select
+                                    value={
+                                        autosave.data.category_id?.toString() ??
+                                        ''
+                                    }
+                                    onValueChange={(value) =>
+                                        autosave.setData(
+                                            'category_id',
+                                            Number(value),
+                                        )
+                                    }
+                                >
+                                    <SelectTrigger id="category">
+                                        <SelectValue placeholder="Choose a category" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {categories.map((category) => (
+                                            <SelectItem
+                                                key={category.id}
+                                                value={category.id.toString()}
+                                            >
+                                                {category.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                {categories.length === 0 && (
+                                    <p className="text-xs text-muted-foreground">
+                                        No categories yet — create one from the
+                                        Categories page.
+                                    </p>
+                                )}
+                                <InputError
+                                    message={errorText(
+                                        autosave.errors.category_id,
+                                    )}
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Tags</Label>
+                                <TagMultiSelect
+                                    value={autosave.data.tags}
+                                    suggestions={tagSuggestions}
+                                    onChange={(tags) =>
+                                        autosave.setData('tags', tags)
+                                    }
+                                />
+                                <InputError
+                                    message={errorText(autosave.errors.tags)}
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="author">Author</Label>
+                                <Select
+                                    value={
+                                        autosave.data.author_id?.toString() ??
+                                        ''
+                                    }
+                                    onValueChange={(value) =>
+                                        autosave.setData(
+                                            'author_id',
+                                            Number(value),
+                                        )
+                                    }
+                                >
+                                    <SelectTrigger id="author">
+                                        <SelectValue placeholder="Choose an author" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {authors.map((author) => (
+                                            <SelectItem
+                                                key={author.id}
+                                                value={author.id.toString()}
+                                            >
+                                                {author.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <InputError
+                                    message={errorText(
+                                        autosave.errors.author_id,
+                                    )}
+                                />
+                            </div>
+                        </CardContent>
+                    </Card>
+
                     <Card>
                         <CardHeader>
                             <CardTitle>Publishing</CardTitle>

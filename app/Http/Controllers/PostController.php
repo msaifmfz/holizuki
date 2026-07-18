@@ -11,7 +11,10 @@ use App\Enums\PostStatus;
 use App\Http\Requests\DeletePostRequest;
 use App\Http\Requests\StorePostRequest;
 use App\Http\Requests\UpdatePostRequest;
+use App\Models\Category;
 use App\Models\Post;
+use App\Models\Tag;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -78,7 +81,10 @@ class PostController extends Controller
         Gate::authorize('update', $post);
 
         return Inertia::render('posts/edit', [
-            'post' => $this->editorData($post->load('author:id,name', 'lastEditor:id,name')),
+            'post' => $this->editorData($post->load('author:id,name', 'lastEditor:id,name', 'tags:id,name')),
+            'categories' => Category::query()->orderBy('name')->get(['id', 'name']),
+            'authors' => User::query()->orderBy('name')->get(['id', 'name']),
+            'tagSuggestions' => Tag::query()->orderBy('name')->pluck('name'),
         ]);
     }
 
@@ -124,6 +130,9 @@ class PostController extends Controller
     {
         return [
             ...$this->summary($post),
+            'category_id' => $post->category_id,
+            'author_id' => $post->author_id,
+            'tags' => $post->tags->pluck('name')->all(),
             'excerpt' => $post->excerpt,
             'body' => $post->body,
             'featured_image_url' => $post->featured_image_path === null ? null : Storage::disk('public')->url($post->featured_image_path),

@@ -8,6 +8,7 @@ use App\Enums\PostRevisionEvent;
 use App\Enums\PostStatus;
 use App\Models\Post;
 use App\Models\User;
+use App\Support\PublicCache;
 use Illuminate\Support\Facades\DB;
 
 class TrashPost
@@ -27,5 +28,7 @@ class TrashPost
             $current->save();
             $current->delete();
         });
+
+        PublicCache::flush();
     }
 }

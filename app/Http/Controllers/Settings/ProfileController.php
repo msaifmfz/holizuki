@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers\Settings;
 
+use App\Concerns\ResolvesUniqueSlug;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\ProfileDeleteRequest;
 use App\Http\Requests\Settings\ProfileUpdateRequest;
+use App\Models\User;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,6 +16,8 @@ use Inertia\Response;
 
 class ProfileController extends Controller
 {
+    use ResolvesUniqueSlug;
+
     /**
      * Show the user's profile settings page.
      */
@@ -32,7 +36,17 @@ class ProfileController extends Controller
     {
         $user = $request->authenticatedUser();
 
-        $user->fill($request->validated());
+        $validated = $request->validated();
+        $socialLinks = is_array($validated['social_links'] ?? null)
+            ? array_filter($validated['social_links'], static fn (mixed $value): bool => $value !== null && $value !== '')
+            : [];
+        $validated['social_links'] = $socialLinks === [] ? null : $socialLinks;
+
+        $user->fill($validated);
+
+        if ($user->author_slug === null || trim($user->author_slug) === '') {
+            $user->author_slug = $this->resolveUniqueSlug($user->name, User::class, $user->id, 'author_slug');
+        }
 
         if ($user->isDirty('email')) {
             $user->email_verified_at = null;

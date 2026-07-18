@@ -9,6 +9,7 @@ use App\Enums\PostStatus;
 use App\Exceptions\PostEditConflictException;
 use App\Models\Post;
 use App\Models\User;
+use App\Support\PublicCache;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 
@@ -18,7 +19,7 @@ class PublishPost
 
     public function handle(Post $post, ?User $editor, ?int $expectedVersion = null, ?CarbonInterface $publishedAt = null): Post
     {
-        return DB::transaction(function () use ($post, $editor, $expectedVersion, $publishedAt): Post {
+        $published = DB::transaction(function () use ($post, $editor, $expectedVersion, $publishedAt): Post {
             $current = Post::query()->whereKey($post->id)->lockForUpdate()->firstOrFail();
 
             if ($expectedVersion !== null && $current->lock_version !== $expectedVersion) {
@@ -43,5 +44,9 @@ class PublishPost
 
             return $current->refresh();
         });
+
+        PublicCache::flush();
+
+        return $published;
     }
 }

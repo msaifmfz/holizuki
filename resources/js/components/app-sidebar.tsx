@@ -1,6 +1,9 @@
 import { Link } from '@inertiajs/react';
-import { FileText, LayoutGrid } from 'lucide-react';
+import { FileText, FolderOpen, Inbox, LayoutGrid, Tags } from 'lucide-react';
+import { index as categoriesIndex } from '@/actions/App/Http/Controllers/CategoryController';
+import { index as inboxIndex } from '@/actions/App/Http/Controllers/ContactSubmissionController';
 import { index as postsIndex } from '@/actions/App/Http/Controllers/PostController';
+import { index as tagsIndex } from '@/actions/App/Http/Controllers/TagController';
 import AppLogo from '@/components/app-logo';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
@@ -26,6 +29,21 @@ const mainNavItems: NavItem[] = [
         title: 'Posts',
         href: postsIndex(),
         icon: FileText,
+    },
+    {
+        title: 'Categories',
+        href: categoriesIndex(),
+        icon: FolderOpen,
+    },
+    {
+        title: 'Tags',
+        href: tagsIndex(),
+        icon: Tags,
+    },
+    {
+        title: 'Inbox',
+        href: inboxIndex(),
+        icon: Inbox,
     },
 ];
 

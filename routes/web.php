@@ -1,16 +1,17 @@
 <?php
 
+use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\ContactSubmissionController;
 use App\Http\Controllers\PostAutosaveController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\PostFeaturedImageController;
 use App\Http\Controllers\PostPublishingController;
 use App\Http\Controllers\PostRevisionController;
 use App\Http\Controllers\PostTrashController;
+use App\Http\Controllers\TagController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Inertia\Response;
-
-Route::get('/', fn (): Response => Inertia::render('welcome'))->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::get('dashboard', fn (): Response => Inertia::render('dashboard'))->name('dashboard');
@@ -20,6 +21,12 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::delete('posts/{post}/force', [PostTrashController::class, 'forceDestroy'])->withTrashed()->name('posts.force-destroy');
 
     Route::resource('posts', PostController::class)->only(['index', 'store', 'edit', 'update', 'destroy']);
+    Route::resource('categories', CategoryController::class)->only(['index', 'store', 'update', 'destroy']);
+    Route::resource('tags', TagController::class)->only(['index', 'store', 'update', 'destroy']);
+
+    Route::get('inbox', [ContactSubmissionController::class, 'index'])->name('contact-submissions.index');
+    Route::patch('inbox/{contactSubmission}/read', [ContactSubmissionController::class, 'markRead'])->name('contact-submissions.read');
+    Route::delete('inbox/{contactSubmission}', [ContactSubmissionController::class, 'destroy'])->name('contact-submissions.destroy');
     Route::patch('posts/{post}/autosave', PostAutosaveController::class)->name('posts.autosave');
     Route::get('posts/{post}/preview', [PostPublishingController::class, 'preview'])->name('posts.preview');
     Route::post('posts/{post}/publish', [PostPublishingController::class, 'publish'])->name('posts.publish');
@@ -36,3 +43,4 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
 });
 
 require __DIR__.'/settings.php';
+require __DIR__.'/public.php';

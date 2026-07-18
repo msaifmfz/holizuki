@@ -10,10 +10,12 @@ use Carbon\CarbonInterface;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Fortify\Contracts\PasskeyUser;
 use Laravel\Fortify\PasskeyAuthenticatable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
@@ -26,6 +28,10 @@ use Override;
  * @property CarbonInterface|null $email_verified_at
  * @property string $password
  * @property UserRole $role
+ * @property string|null $author_slug
+ * @property string|null $avatar_path
+ * @property string|null $bio
+ * @property array<string, string>|null $social_links
  * @property string|null $two_factor_secret
  * @property string|null $two_factor_recovery_codes
  * @property CarbonInterface|null $two_factor_confirmed_at
@@ -33,7 +39,7 @@ use Override;
  * @property CarbonInterface|null $created_at
  * @property CarbonInterface|null $updated_at
  */
-#[Fillable(['name', 'email', 'password'])]
+#[Fillable(['name', 'email', 'password', 'author_slug', 'avatar_path', 'bio', 'social_links'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable implements PasskeyUser
 {
@@ -63,6 +69,14 @@ class User extends Authenticatable implements PasskeyUser
         return $this->hasMany(Post::class, 'author_id');
     }
 
+    /** @return Attribute<string|null, never> */
+    protected function avatarUrl(): Attribute
+    {
+        return Attribute::get(fn (): ?string => $this->avatar_path === null
+            ? null
+            : Storage::disk('public')->url($this->avatar_path));
+    }
+
     /**
      * Get the attributes that should be cast.
      *
@@ -75,6 +89,7 @@ class User extends Authenticatable implements PasskeyUser
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'role' => UserRole::class,
+            'social_links' => 'array',
             'two_factor_confirmed_at' => 'datetime',
         ];
     }

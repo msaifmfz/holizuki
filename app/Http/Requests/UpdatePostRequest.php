@@ -47,6 +47,10 @@ class UpdatePostRequest extends AuthenticatedRequest
 
         $data['featured_image_path'] = $this->boundPost()->featured_image_path;
 
+        if (! array_key_exists('category_id', $data)) {
+            $data['category_id'] = $this->boundPost()->category_id;
+        }
+
         return $data;
     }
 }

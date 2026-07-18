@@ -41,6 +41,7 @@ class PublishPostRequest extends AuthenticatedRequest
         $data['body'] = $post->body;
         $data['featured_image_path'] = $post->featured_image_path;
         $data['featured_image_alt'] = $post->featured_image_alt;
+        $data['category_id'] = $post->category_id;
 
         return $data;
     }

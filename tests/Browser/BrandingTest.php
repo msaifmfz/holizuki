@@ -1,14 +1,16 @@
 <?php
 
+use App\Models\Post;
 use App\Models\User;
 
-it('uses Holizuki branding on public pages', function (): void {
+it('uses Holizuki branding on the public homepage', function (): void {
+    Post::factory()->published()->create(['title' => 'Designing calm publishing tools']);
+
     visit('/')
         ->wait(1)
-        ->assertTitle('Welcome - Holizuki')
+        ->assertTitle('Home - Holizuki')
         ->assertSee('Holizuki')
-        ->assertSee('Write, revise, and publish')
-        ->assertSee('Log in to continue')
+        ->assertSee('Designing calm publishing tools')
         ->assertDontSee('Laravel')
         ->assertDontSee('Laracasts')
         ->assertDontSee('Deploy now')
@@ -25,14 +27,16 @@ it('uses Holizuki branding on the login page', function (): void {
         ->assertNoAccessibilityIssues();
 });
 
-it('keeps the Holizuki welcome design usable in mobile dark mode', function (): void {
+it('keeps the Holizuki homepage usable in mobile dark mode', function (): void {
+    Post::factory()->published()->create(['title' => 'Designing calm publishing tools']);
+
     visit('/')
         ->on()->iPhone14Pro()
         ->inDarkMode()
         ->wait(1)
-        ->assertTitle('Welcome - Holizuki')
+        ->assertTitle('Home - Holizuki')
         ->assertSee('Holizuki')
-        ->assertSee('Log in to continue')
+        ->assertSee('Designing calm publishing tools')
         ->assertDontSee('Laravel')
         ->assertNoSmoke();
 });

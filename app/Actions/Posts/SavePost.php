@@ -14,7 +14,10 @@ use InvalidArgumentException;
 
 class SavePost
 {
-    public function __construct(private readonly CreatePostRevision $createRevision) {}
+    public function __construct(
+        private readonly CreatePostRevision $createRevision,
+        private readonly SyncPostTags $syncTags,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $data
@@ -57,6 +60,14 @@ class SavePost
             $attributes['excerpt'] = $this->nullableString($attributes['excerpt'] ?? null);
             $attributes['featured_image_alt'] = $this->nullableString($attributes['featured_image_alt'] ?? null);
 
+            if (array_key_exists('category_id', $data)) {
+                $attributes['category_id'] = is_numeric($data['category_id']) ? (int) $data['category_id'] : null;
+            }
+
+            if (array_key_exists('author_id', $data)) {
+                $attributes['author_id'] = is_numeric($data['author_id']) ? (int) $data['author_id'] : null;
+            }
+
             $slugIsManual = $attributes['slug_is_manual'];
 
             if (! is_bool($slugIsManual)) {
@@ -76,6 +87,10 @@ class SavePost
             $current->updated_by_id = $editor->id;
             $current->lock_version++;
             $current->save();
+
+            if (array_key_exists('tags', $data)) {
+                $this->syncTags->handle($current, is_array($data['tags']) ? $data['tags'] : []);
+            }
 
             if ($createRevision) {
                 $this->createRevision->handle($current, $editor, PostRevisionEvent::Saved);

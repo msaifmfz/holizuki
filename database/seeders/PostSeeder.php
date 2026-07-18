@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Models\Category;
 use App\Models\Post;
+use App\Models\Tag;
 use Illuminate\Database\Seeder;
 
 class PostSeeder extends Seeder
@@ -14,6 +16,15 @@ class PostSeeder extends Seeder
      */
     public function run(): void
     {
-        Post::factory()->count(12)->create();
+        $categories = Category::factory()->count(4)->create();
+        $tags = Tag::factory()->count(10)->create();
+
+        $published = Post::factory()->count(6)->published()->create(['category_id' => fn (): int => $categories->random()->id]);
+        $scheduled = Post::factory()->count(3)->scheduled()->create(['category_id' => fn (): int => $categories->random()->id]);
+        $drafts = Post::factory()->count(3)->create(['category_id' => fn (): int => $categories->random()->id]);
+
+        foreach ($published->concat($scheduled)->concat($drafts) as $post) {
+            $post->tags()->attach($tags->random(random_int(2, 4))->pluck('id'));
+        }
     }
 }

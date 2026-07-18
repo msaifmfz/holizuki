@@ -15,7 +15,12 @@ export type PostSummary = {
     updated_at: string | null;
 };
 
+export type EditorOption = { id: number; name: string };
+
 export type PostEditorData = PostSummary & {
+    category_id: number | null;
+    author_id: number | null;
+    tags: string[];
     excerpt: string | null;
     body: RichTextDocument | null;
     featured_image_url: string | null;
