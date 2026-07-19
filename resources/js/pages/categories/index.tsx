@@ -6,7 +6,7 @@ import {
     index,
     store,
     update,
-} from '@/actions/App/Http/Controllers/CategoryController';
+} from '@/actions/App/Http/Admin/Controllers/CategoryController';
 import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

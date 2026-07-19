@@ -4,7 +4,7 @@ import { useRef, useState } from 'react';
 import {
     destroy,
     store,
-} from '@/actions/App/Http/Controllers/PostOgImageController';
+} from '@/actions/App/Http/Admin/Controllers/PostOgImageController';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';

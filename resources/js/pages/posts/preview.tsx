@@ -1,7 +1,7 @@
 import { Head, Link } from '@inertiajs/react';
 import { ArrowLeft, History } from 'lucide-react';
-import { edit } from '@/actions/App/Http/Controllers/PostController';
-import { index as revisionsIndex } from '@/actions/App/Http/Controllers/PostRevisionController';
+import { edit } from '@/actions/App/Http/Admin/Controllers/PostController';
+import { index as revisionsIndex } from '@/actions/App/Http/Admin/Controllers/PostRevisionController';
 import PublicRichText, {
     ExpandableImage,
 } from '@/components/public/public-rich-text';

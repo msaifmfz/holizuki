@@ -4,17 +4,21 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
-use App\Enums\UserRole;
-use App\Models\User;
+use App\Domain\Identity\Enums\UserRole;
+use App\Domain\Identity\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Override;
 
 /**
  * @extends Factory<User>
  */
 class UserFactory extends Factory
 {
+    #[Override]
+    protected $model = User::class;
+
     /**
      * The current password being used by the factory.
      */

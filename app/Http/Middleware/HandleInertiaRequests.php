@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
-use App\Enums\PostStatus;
-use App\Models\Category;
+use App\Domain\Publishing\Enums\PostStatus;
+use App\Domain\Taxonomy\Models\Category;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;

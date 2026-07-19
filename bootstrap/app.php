@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-use App\Http\Controllers\ReadinessController;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\ReadinessController;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -21,6 +21,10 @@ return Application::configure(basePath: dirname(__DIR__))
             Route::get('ready', ReadinessController::class)->name('ready');
         },
     )
+    ->withCommands([
+        __DIR__.'/../app/Domain/Identity/Console',
+        __DIR__.'/../app/Domain/Publishing/Console',
+    ])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
 

@@ -1,7 +1,7 @@
 <?php
 
-use App\Models\Post;
-use App\Models\User;
+use App\Domain\Identity\Models\User;
+use App\Domain\Publishing\Models\Post;
 
 it('uses Holizuki branding on the public homepage', function (): void {
     Post::factory()->published()->create(['title' => 'Designing calm publishing tools']);

@@ -1,10 +1,10 @@
 <?php
 
-use App\Models\Category;
-use App\Models\ContactSubmission;
-use App\Models\Post;
-use App\Models\Tag;
-use App\Models\User;
+use App\Domain\Identity\Models\User;
+use App\Domain\Inbox\Models\ContactSubmission;
+use App\Domain\Publishing\Models\Post;
+use App\Domain\Taxonomy\Models\Category;
+use App\Domain\Taxonomy\Models\Tag;
 
 it('renders public pages without browser errors', function (): void {
     $author = User::factory()->author()->create(['author_slug' => 'smoke-author']);

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use App\Models\Post;
+use App\Domain\Publishing\Models\Post;
 
 it('keeps article navigation usable on mobile in dark mode', function (): void {
     Post::factory()->published()->create([

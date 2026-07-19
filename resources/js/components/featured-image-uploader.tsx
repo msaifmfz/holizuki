@@ -6,7 +6,7 @@ import type { Area, Point } from 'react-easy-crop';
 import {
     destroy,
     store,
-} from '@/actions/App/Http/Controllers/PostFeaturedImageController';
+} from '@/actions/App/Http/Admin/Controllers/PostFeaturedImageController';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import {

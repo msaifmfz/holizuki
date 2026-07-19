@@ -1,19 +1,19 @@
 <?php
 
-use App\Http\Controllers\Public\ArchiveController;
-use App\Http\Controllers\Public\AuthorPageController;
-use App\Http\Controllers\Public\CategoryPageController;
-use App\Http\Controllers\Public\ContactController;
-use App\Http\Controllers\Public\FeedController;
-use App\Http\Controllers\Public\HomeController;
-use App\Http\Controllers\Public\PostViewController;
-use App\Http\Controllers\Public\PostViewEventController;
-use App\Http\Controllers\Public\RobotsTxtController;
-use App\Http\Controllers\Public\SearchController;
-use App\Http\Controllers\Public\SitemapController;
-use App\Http\Controllers\Public\TagPageController;
-use App\Http\Controllers\Public\TopicController;
-use App\Support\Seo;
+use App\Domain\Reading\Support\Seo;
+use App\Http\Public\Controllers\ArchiveController;
+use App\Http\Public\Controllers\AuthorPageController;
+use App\Http\Public\Controllers\CategoryPageController;
+use App\Http\Public\Controllers\ContactController;
+use App\Http\Public\Controllers\FeedController;
+use App\Http\Public\Controllers\HomeController;
+use App\Http\Public\Controllers\PostViewController;
+use App\Http\Public\Controllers\PostViewEventController;
+use App\Http\Public\Controllers\RobotsTxtController;
+use App\Http\Public\Controllers\SearchController;
+use App\Http\Public\Controllers\SitemapController;
+use App\Http\Public\Controllers\TagPageController;
+use App\Http\Public\Controllers\TopicController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Inertia\Response;

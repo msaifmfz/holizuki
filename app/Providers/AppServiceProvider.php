@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
-use App\Models\User;
-use App\Support\ReaderIdentity;
+use App\Domain\Identity\Models\User;
+use App\Domain\Reading\Support\ReaderIdentity;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;

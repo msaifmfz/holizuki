@@ -1,6 +1,6 @@
 <?php
 
-use App\Models\PostView;
+use App\Domain\Reading\Models\PostView;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;

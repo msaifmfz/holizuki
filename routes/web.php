@@ -1,17 +1,17 @@
 <?php
 
-use App\Http\Controllers\CategoryController;
-use App\Http\Controllers\ContactSubmissionController;
-use App\Http\Controllers\PostAutosaveController;
-use App\Http\Controllers\PostController;
-use App\Http\Controllers\PostFeatureController;
-use App\Http\Controllers\PostFeaturedImageController;
-use App\Http\Controllers\PostInlineImageController;
-use App\Http\Controllers\PostOgImageController;
-use App\Http\Controllers\PostPublishingController;
-use App\Http\Controllers\PostRevisionController;
-use App\Http\Controllers\PostTrashController;
-use App\Http\Controllers\TagController;
+use App\Http\Admin\Controllers\CategoryController;
+use App\Http\Admin\Controllers\ContactSubmissionController;
+use App\Http\Admin\Controllers\PostAutosaveController;
+use App\Http\Admin\Controllers\PostController;
+use App\Http\Admin\Controllers\PostFeatureController;
+use App\Http\Admin\Controllers\PostFeaturedImageController;
+use App\Http\Admin\Controllers\PostInlineImageController;
+use App\Http\Admin\Controllers\PostOgImageController;
+use App\Http\Admin\Controllers\PostPublishingController;
+use App\Http\Admin\Controllers\PostRevisionController;
+use App\Http\Admin\Controllers\PostTrashController;
+use App\Http\Admin\Controllers\TagController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Inertia\Response;

@@ -4,7 +4,7 @@ import {
     destroy,
     index,
     markRead,
-} from '@/actions/App/Http/Controllers/ContactSubmissionController';
+} from '@/actions/App/Http/Admin/Controllers/ContactSubmissionController';
 import Pagination from '@/components/pagination';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

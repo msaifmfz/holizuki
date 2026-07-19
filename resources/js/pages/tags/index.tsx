@@ -6,7 +6,7 @@ import {
     index,
     store,
     update,
-} from '@/actions/App/Http/Controllers/TagController';
+} from '@/actions/App/Http/Admin/Controllers/TagController';
 import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

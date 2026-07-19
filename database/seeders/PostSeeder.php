@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
-use App\Actions\Posts\RebuildPostMetadata;
-use App\Models\Category;
-use App\Models\Post;
-use App\Models\Tag;
+use App\Domain\Publishing\Actions\RebuildPostMetadata;
+use App\Domain\Publishing\Models\Post;
+use App\Domain\Taxonomy\Models\Category;
+use App\Domain\Taxonomy\Models\Tag;
 use Illuminate\Database\Seeder;
 
 class PostSeeder extends Seeder

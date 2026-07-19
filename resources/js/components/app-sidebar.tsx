@@ -1,9 +1,9 @@
 import { Link } from '@inertiajs/react';
 import { FileText, FolderOpen, Inbox, LayoutGrid, Tags } from 'lucide-react';
-import { index as categoriesIndex } from '@/actions/App/Http/Controllers/CategoryController';
-import { index as inboxIndex } from '@/actions/App/Http/Controllers/ContactSubmissionController';
-import { index as postsIndex } from '@/actions/App/Http/Controllers/PostController';
-import { index as tagsIndex } from '@/actions/App/Http/Controllers/TagController';
+import { index as categoriesIndex } from '@/actions/App/Http/Admin/Controllers/CategoryController';
+import { index as inboxIndex } from '@/actions/App/Http/Admin/Controllers/ContactSubmissionController';
+import { index as postsIndex } from '@/actions/App/Http/Admin/Controllers/PostController';
+import { index as tagsIndex } from '@/actions/App/Http/Admin/Controllers/TagController';
 import AppLogo from '@/components/app-logo';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';

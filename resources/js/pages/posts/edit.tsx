@@ -11,19 +11,19 @@ import {
     StarOff,
 } from 'lucide-react';
 import { useEffect, useEffectEvent, useState } from 'react';
-import PostAutosaveController from '@/actions/App/Http/Controllers/PostAutosaveController';
+import PostAutosaveController from '@/actions/App/Http/Admin/Controllers/PostAutosaveController';
 import {
     edit,
     index,
     update,
-} from '@/actions/App/Http/Controllers/PostController';
+} from '@/actions/App/Http/Admin/Controllers/PostController';
 import {
     preview,
     publish,
     schedule,
     unpublish,
-} from '@/actions/App/Http/Controllers/PostPublishingController';
-import { index as revisionsIndex } from '@/actions/App/Http/Controllers/PostRevisionController';
+} from '@/actions/App/Http/Admin/Controllers/PostPublishingController';
+import { index as revisionsIndex } from '@/actions/App/Http/Admin/Controllers/PostRevisionController';
 import FeaturedImageUploader from '@/components/featured-image-uploader';
 import InputError from '@/components/input-error';
 import OgImageUploader from '@/components/og-image-uploader';

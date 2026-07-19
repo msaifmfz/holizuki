@@ -4,15 +4,19 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
-use App\Models\Post;
-use App\Models\PostMedia;
+use App\Domain\Publishing\Models\Post;
+use App\Domain\Publishing\Models\PostMedia;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Override;
 
 /**
  * @extends Factory<PostMedia>
  */
 class PostMediaFactory extends Factory
 {
+    #[Override]
+    protected $model = PostMedia::class;
+
     /**
      * Define the model's default state.
      *

@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
-use App\Actions\Posts\RebuildPostMetadata;
-use App\Enums\PostStatus;
-use App\Models\Category;
-use App\Models\Post;
-use App\Models\User;
+use App\Domain\Identity\Models\User;
+use App\Domain\Publishing\Actions\RebuildPostMetadata;
+use App\Domain\Publishing\Enums\PostStatus;
+use App\Domain\Publishing\Models\Post;
+use App\Domain\Taxonomy\Models\Category;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Override;
 
@@ -17,6 +17,9 @@ use Override;
  */
 class PostFactory extends Factory
 {
+    #[Override]
+    protected $model = Post::class;
+
     #[Override]
     public function configure(): static
     {

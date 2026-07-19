@@ -3,12 +3,12 @@ import { ArrowLeft, Eye, RotateCcw } from 'lucide-react';
 import {
     edit,
     index as postsIndex,
-} from '@/actions/App/Http/Controllers/PostController';
+} from '@/actions/App/Http/Admin/Controllers/PostController';
 import {
     index,
     restore,
     show,
-} from '@/actions/App/Http/Controllers/PostRevisionController';
+} from '@/actions/App/Http/Admin/Controllers/PostRevisionController';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';

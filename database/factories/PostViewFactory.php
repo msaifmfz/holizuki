@@ -4,15 +4,19 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
-use App\Models\Post;
-use App\Models\PostView;
+use App\Domain\Publishing\Models\Post;
+use App\Domain\Reading\Models\PostView;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Override;
 
 /**
  * @extends Factory<PostView>
  */
 class PostViewFactory extends Factory
 {
+    #[Override]
+    protected $model = PostView::class;
+
     /**
      * Define the model's default state.
      *

@@ -1,8 +1,8 @@
 import { Form, Head, usePage } from '@inertiajs/react';
 import { Link } from '@inertiajs/react';
 import { useRef } from 'react';
-import ProfileAvatarController from '@/actions/App/Http/Controllers/Settings/ProfileAvatarController';
-import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController';
+import ProfileAvatarController from '@/actions/App/Http/Settings/Controllers/ProfileAvatarController';
+import ProfileController from '@/actions/App/Http/Settings/Controllers/ProfileController';
 import DeleteUser from '@/components/delete-user';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';

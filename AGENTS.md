@@ -51,6 +51,22 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 - Stick to existing directory structure; don't create new base folders without approval.
 - Do not change the application's dependencies without approval.
 
+### Domain-driven layout
+
+The backend is organized into bounded contexts under `app/Domain/` with an HTTP layer split by portal — `tests/ArchitectureTest.php` enforces the dependency rules:
+
+- `app/Domain/Publishing/` — the Post aggregate (models, actions, events, listeners, enums, rules, policies, queries, value objects, casts, console commands). Post state transitions (`publish`, `schedule`, `unpublish`, `moveToTrash`, `feature`, `unfeature`) live on the `Post` model; actions orchestrate transactions, optimistic locking, revisions, and event dispatch.
+- `app/Domain/Taxonomy/` — categories and tags; may use `Publishing\Models` only.
+- `app/Domain/Reading/` — the public read side (post views, public cache, SEO support, reader documents, card/popular queries); may read Publishing/Taxonomy/Identity models but never writes them.
+- `app/Domain/Inbox/` — contact submissions.
+- `app/Domain/Identity/` — users, roles, auth actions; depends on no other context.
+- `app/Http/{Admin,Public,Settings}/` — controllers/requests per portal; shared base classes and middleware sit at the `app/Http/` root.
+- `app/Support/` — context-free shared kernel (`DbExpressions`, `ResolvesUniqueSlug`, `Slug`).
+
+Cross-context reactions go through domain events (e.g. `PostPublished` → `Reading\Listeners\FlushPublicCache`; `CategorySaved`/`AuthorProfileUpdated` → Publishing metadata rebuild listeners), registered explicitly in `PublishingServiceProvider` and `ReadingServiceProvider`. Never call another context's actions or support classes from inside a domain context.
+
+Because models are no longer in `App\Models`, `php artisan make:model|controller|policy` targets dead paths — create files manually following siblings. Each model pairs an explicit `newFactory()` override with a `protected $model` property on its factory, and policies attach via `#[UsePolicy]`. Feature tests mirror the contexts (`tests/Feature/<Context>/`).
+
 ## Frontend Bundling
 
 - If the user doesn't see a frontend change reflected in the UI, it could mean they need to run `npm run build`, `npm run dev`, or `composer run dev`. Ask them.

@@ -1,5 +1,5 @@
 import { Form, Head } from '@inertiajs/react';
-import { store } from '@/actions/App/Http/Controllers/Public/ContactController';
+import { store } from '@/actions/App/Http/Public/Controllers/ContactController';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

@@ -4,14 +4,18 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
-use App\Models\ContactSubmission;
+use App\Domain\Inbox\Models\ContactSubmission;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Override;
 
 /**
  * @extends Factory<ContactSubmission>
  */
 class ContactSubmissionFactory extends Factory
 {
+    #[Override]
+    protected $model = ContactSubmission::class;
+
     /**
      * Define the model's default state.
      *

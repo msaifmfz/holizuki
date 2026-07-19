@@ -6,12 +6,12 @@ import {
     edit,
     index,
     store,
-} from '@/actions/App/Http/Controllers/PostController';
+} from '@/actions/App/Http/Admin/Controllers/PostController';
 import {
     forceDestroy,
     index as trashIndex,
     restore,
-} from '@/actions/App/Http/Controllers/PostTrashController';
+} from '@/actions/App/Http/Admin/Controllers/PostTrashController';
 import Pagination from '@/components/pagination';
 import PostStatusBadge from '@/components/post-status-badge';
 import { Badge } from '@/components/ui/badge';
