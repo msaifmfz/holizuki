@@ -7,6 +7,7 @@ namespace App\Actions\Posts;
 use App\Concerns\ResolvesUniqueSlug;
 use App\Models\Post;
 use App\Models\Tag;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Str;
 
 class SyncPostTags
@@ -44,15 +45,32 @@ class SyncPostTags
         $ids = [];
 
         foreach (array_slice($normalized, 0, self::MAX_TAGS) as $key => $name) {
-            $tag = Tag::query()->whereRaw('lower(name) = ?', [$key])->first();
-            $tag ??= Tag::create([
-                'name' => $name,
-                'slug' => $this->resolveUniqueSlug($name, Tag::class),
-            ]);
-
-            $ids[] = $tag->id;
+            $ids[] = $this->resolveTag($key, $name)->id;
         }
 
         $post->tags()->sync($ids);
+    }
+
+    /**
+     * Find the tag by its lowercased name, creating it when missing. A
+     * concurrent request can win the create; on a unique violation fall back
+     * to the row that won.
+     */
+    private function resolveTag(string $key, string $name): Tag
+    {
+        $tag = Tag::query()->whereRaw('lower(name) = ?', [$key])->first();
+
+        if ($tag !== null) {
+            return $tag;
+        }
+
+        try {
+            return Tag::create([
+                'name' => $name,
+                'slug' => $this->resolveUniqueSlug($name, Tag::class),
+            ]);
+        } catch (UniqueConstraintViolationException $exception) {
+            return Tag::query()->whereRaw('lower(name) = ?', [$key])->first() ?? throw $exception;
+        }
     }
 }

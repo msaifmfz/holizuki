@@ -56,7 +56,7 @@ export default function SearchPage({ query, posts }: Props) {
                                 }
                                 maxLength={100}
                                 className="pl-9"
-                                placeholder="Search titles and summaries"
+                                placeholder="Search posts, topics, tags, and authors"
                                 aria-label="Search posts"
                             />
                         </div>
@@ -74,7 +74,7 @@ export default function SearchPage({ query, posts }: Props) {
                 {query === '' ? (
                     <EmptyState
                         title="Search the blog"
-                        description="Type a few words above to search every published post by title and summary."
+                        description="Type a few words above to search every published post, topic, tag, and author."
                     />
                 ) : posts.data.length > 0 ? (
                     <>

@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Actions\Posts\RebuildPostMetadata;
 use App\Concerns\ResolvesUniqueSlug;
 use App\Http\Requests\StoreTagRequest;
 use App\Http\Requests\UpdateTagRequest;
+use App\Models\Post;
 use App\Models\Tag;
 use App\Support\PublicCache;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -51,7 +54,7 @@ class TagController extends Controller
         return to_route('tags.index');
     }
 
-    public function update(UpdateTagRequest $request, Tag $tag): RedirectResponse
+    public function update(UpdateTagRequest $request, Tag $tag, RebuildPostMetadata $rebuildPostMetadata): RedirectResponse
     {
         $name = $request->string('name')->toString();
 
@@ -60,17 +63,23 @@ class TagController extends Controller
             'slug' => $this->resolveUniqueSlug($name, Tag::class, $tag->id),
         ]);
 
+        $rebuildPostMetadata->handleQuery(
+            Post::query()->whereHas('tags', fn (Builder $query): Builder => $query->whereKey($tag->id)),
+        );
+
         PublicCache::flush();
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Tag updated.')]);
 
         return to_route('tags.index');
     }
 
-    public function destroy(Tag $tag): RedirectResponse
+    public function destroy(Tag $tag, RebuildPostMetadata $rebuildPostMetadata): RedirectResponse
     {
         Gate::authorize('delete', $tag);
 
+        $postIds = $tag->posts()->pluck((new Post)->qualifyColumn('id'));
         $tag->delete();
+        $rebuildPostMetadata->handleQuery(Post::query()->whereKey($postIds));
 
         PublicCache::flush();
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Tag deleted.')]);

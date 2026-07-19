@@ -61,7 +61,7 @@ RUN --mount=type=cache,target=/root/.npm \
     npm ci --ignore-scripts
 
 COPY --from=backend /app /build
-RUN npm run build
+RUN npm run build:ssr
 
 FROM php-base AS runtime
 
@@ -92,8 +92,10 @@ RUN groupadd --gid 10001 app \
         /tmp/caddy/config \
         /tmp/caddy/data
 
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=backend --chown=app:app /app /app
 COPY --from=frontend --chown=app:app /build/public/build /app/public/build
+COPY --from=frontend --chown=app:app /build/bootstrap/ssr /app/bootstrap/ssr
 COPY --chown=root:root docker/entrypoint.sh /usr/local/bin/holizuki
 
 RUN chmod 0755 /usr/local/bin/holizuki

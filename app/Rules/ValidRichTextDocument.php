@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Rules;
 
+use App\Support\RichTextDocument;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Support\Str;
@@ -13,7 +14,7 @@ class ValidRichTextDocument implements ValidationRule
     /** @var list<string> */
     private const array ALLOWED_NODES = [
         'doc', 'paragraph', 'text', 'heading', 'bulletList', 'orderedList', 'listItem',
-        'blockquote', 'codeBlock', 'hardBreak', 'horizontalRule',
+        'blockquote', 'codeBlock', 'hardBreak', 'horizontalRule', 'image',
     ];
 
     /** @var list<string> */
@@ -39,7 +40,7 @@ class ValidRichTextDocument implements ValidationRule
             return;
         }
 
-        if ($this->requireContent && trim($this->plainText($value)) === '') {
+        if ($this->requireContent && RichTextDocument::plainText($value) === '') {
             $fail('The post body must contain text before publishing.');
         }
     }
@@ -64,9 +65,19 @@ class ValidRichTextDocument implements ValidationRule
         if ($type === 'heading') {
             $attributes = $node['attrs'] ?? null;
 
-            if (! is_array($attributes) || ! in_array($attributes['level'] ?? null, [2, 3], true)) {
+            if (! is_array($attributes)
+                || array_keys($attributes) !== ['level']
+                || ! in_array($attributes['level'] ?? null, [2, 3], true)) {
                 return false;
             }
+        }
+
+        if ($type === 'codeBlock' && ! $this->validCodeBlockAttributes($node['attrs'] ?? null)) {
+            return false;
+        }
+
+        if ($type === 'image' && ! $this->validImageAttributes($node['attrs'] ?? null)) {
+            return false;
         }
 
         $marks = $node['marks'] ?? [];
@@ -89,7 +100,9 @@ class ValidRichTextDocument implements ValidationRule
             if ($markType === 'link') {
                 $attributes = $mark['attrs'] ?? null;
 
-                if (! is_array($attributes) || ! $this->validLink($attributes['href'] ?? null)) {
+                if (! is_array($attributes)
+                    || array_diff(array_keys($attributes), ['href', 'target', 'rel', 'class']) !== []
+                    || ! $this->validLink($attributes['href'] ?? null)) {
                     return false;
                 }
             }
@@ -106,25 +119,49 @@ class ValidRichTextDocument implements ValidationRule
 
     private function validLink(mixed $href): bool
     {
-        return is_string($href) && Str::startsWith(Str::lower($href), ['https://', 'http://', 'mailto:']);
+        return is_string($href)
+            && Str::length($href) <= 2048
+            && Str::startsWith(Str::lower($href), ['https://', 'http://', 'mailto:']);
     }
 
-    /** @param array<mixed> $node */
-    private function plainText(array $node): string
+    private function validCodeBlockAttributes(mixed $attributes): bool
     {
-        $text = is_string($node['text'] ?? null) ? $node['text'] : '';
-        $content = $node['content'] ?? [];
-
-        if (! is_array($content)) {
-            return $text;
+        if ($attributes === null) {
+            return true;
         }
 
-        foreach ($content as $child) {
-            if (is_array($child)) {
-                $text .= ' '.$this->plainText($child);
-            }
+        if (! is_array($attributes) || array_diff(array_keys($attributes), ['language']) !== []) {
+            return false;
         }
 
-        return $text;
+        $language = $attributes['language'] ?? null;
+
+        return $language === null || RichTextDocument::supportsCodeLanguage($language);
+    }
+
+    private function validImageAttributes(mixed $attributes): bool
+    {
+        if (! is_array($attributes)
+            || array_diff(array_keys($attributes), ['mediaId', 'src', 'alt', 'caption', 'width', 'height']) !== []) {
+            return false;
+        }
+
+        $mediaId = $attributes['mediaId'] ?? null;
+        $source = $attributes['src'] ?? null;
+        $alternativeText = $attributes['alt'] ?? null;
+        $caption = $attributes['caption'] ?? null;
+        $width = $attributes['width'] ?? null;
+        $height = $attributes['height'] ?? null;
+
+        return is_int($mediaId)
+            && $mediaId > 0
+            && is_string($source)
+            && Str::length($source) <= 2048
+            && is_string($alternativeText)
+            && trim($alternativeText) !== ''
+            && Str::length($alternativeText) <= 255
+            && ($caption === null || (is_string($caption) && Str::length($caption) <= 500))
+            && ($width === null || (is_int($width) && $width > 0 && $width <= 10_000))
+            && ($height === null || (is_int($height) && $height > 0 && $height <= 10_000));
     }
 }

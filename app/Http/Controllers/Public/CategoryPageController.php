@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\Post;
 use App\Support\Seo;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -16,7 +17,7 @@ class CategoryPageController extends Controller
 {
     use BuildsPublicPostCards;
 
-    public function show(Category $category): Response
+    public function show(Request $request, Category $category): Response
     {
         $posts = $this->publicPostQuery()
             ->where('category_id', $category->id)
@@ -35,7 +36,12 @@ class CategoryPageController extends Controller
             'seo' => Seo::make(
                 title: $category->name.' — '.Seo::siteName(),
                 description: $category->description,
-                canonical: route('public.categories.show', $category->slug),
+                canonical: route('public.categories.show', array_filter([
+                    'category' => $category->slug,
+                    'page' => $request->integer('page', 1) > 1 ? $request->integer('page') : null,
+                ], static fn (mixed $value): bool => $value !== null)),
+                prevUrl: $posts->previousPageUrl(),
+                nextUrl: $posts->nextPageUrl(),
             ),
         ]);
     }

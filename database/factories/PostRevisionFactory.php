@@ -31,6 +31,7 @@ class PostRevisionFactory extends Factory
             'slug' => fake()->unique()->slug(),
             'excerpt' => fake()->paragraph(),
             'body' => ['type' => 'doc', 'content' => []],
+            'featured_image_caption' => fake()->optional()->sentence(),
         ];
     }
 }

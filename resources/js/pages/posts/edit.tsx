@@ -1,11 +1,14 @@
 import { Head, Link, router, setLayoutProps, useHttp } from '@inertiajs/react';
 import {
     CalendarClock,
+    ChevronsUpDown,
     Eye,
     History,
     RotateCcw,
     Save,
     Send,
+    Star,
+    StarOff,
 } from 'lucide-react';
 import { useEffect, useEffectEvent, useState } from 'react';
 import PostAutosaveController from '@/actions/App/Http/Controllers/PostAutosaveController';
@@ -23,6 +26,7 @@ import {
 import { index as revisionsIndex } from '@/actions/App/Http/Controllers/PostRevisionController';
 import FeaturedImageUploader from '@/components/featured-image-uploader';
 import InputError from '@/components/input-error';
+import OgImageUploader from '@/components/og-image-uploader';
 import PostStatusBadge from '@/components/post-status-badge';
 import RichTextEditor from '@/components/rich-text-editor';
 import TagMultiSelect from '@/components/tag-multi-select';
@@ -35,6 +39,12 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -44,6 +54,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import {
     errorText,
     formatDate,
@@ -51,6 +62,10 @@ import {
     slugify,
     toLocalDateTimeInput,
 } from '@/lib/post-editor';
+import {
+    destroy as unfeaturePost,
+    store as featurePost,
+} from '@/routes/posts/feature';
 import type {
     AutosaveResponse,
     EditorOption,
@@ -66,9 +81,16 @@ type EditorForm = {
     excerpt: string;
     body: RichTextDocument | null;
     featured_image_alt: string;
+    featured_image_caption: string;
     category_id: number | null;
     author_id: number | null;
     tags: string[];
+    seo_title: string;
+    meta_description: string;
+    canonical_url: string;
+    og_title: string;
+    og_description: string;
+    noindex: boolean;
     lock_version: number;
     force: boolean;
 };
@@ -101,6 +123,7 @@ export default function EditPost({
     });
 
     const [postState, setPostState] = useState(post);
+    const [featuredAt, setFeaturedAt] = useState(post.featured_at);
     const [saveState, setSaveState] = useState<'saved' | 'saving' | 'error'>(
         'saved',
     );
@@ -115,9 +138,16 @@ export default function EditPost({
         excerpt: post.excerpt ?? '',
         body: post.body,
         featured_image_alt: post.featured_image_alt ?? '',
+        featured_image_caption: post.featured_image_caption ?? '',
         category_id: post.category_id,
         author_id: post.author_id,
         tags: post.tags,
+        seo_title: post.seo_title ?? '',
+        meta_description: post.meta_description ?? '',
+        canonical_url: post.canonical_url ?? '',
+        og_title: post.og_title ?? '',
+        og_description: post.og_description ?? '',
+        noindex: post.noindex,
         lock_version: post.lock_version,
         force: false,
     });
@@ -128,6 +158,7 @@ export default function EditPost({
         lock_version: post.lock_version,
         scheduled_at: '',
     });
+    const featuring = useHttp<Record<string, never>, void>({});
 
     const applySaveResponse = (response: AutosaveResponse) => {
         const nextData = {
@@ -218,6 +249,10 @@ export default function EditPost({
             scheduled_at: '',
         });
         setPostState((current) => ({ ...current, ...response }));
+
+        if (response.status !== 'published') {
+            setFeaturedAt(null);
+        }
     };
 
     const publishNow = async () => {
@@ -278,6 +313,22 @@ export default function EditPost({
             applyPublishingResponse(
                 await publishing.post(unpublish.url(post.id)),
             );
+        } catch {
+            return;
+        }
+    };
+
+    const toggleFeatured = async () => {
+        try {
+            if (featuredAt) {
+                await featuring.delete(unfeaturePost.url(post.id));
+                setFeaturedAt(null);
+
+                return;
+            }
+
+            await featuring.post(featurePost.url(post.id));
+            setFeaturedAt(new Date().toISOString());
         } catch {
             return;
         }
@@ -424,8 +475,9 @@ export default function EditPost({
                                     }
                                 />
                                 <p className="text-xs text-muted-foreground">
-                                    Automatic changes stop after first
-                                    publication; manual edits remain available.
+                                    {postState.slug_locked_at
+                                        ? 'This post has been published — changing the slug creates a permanent redirect from the old URL.'
+                                        : 'Automatic changes stop after first publication; manual edits remain available.'}
                                 </p>
                                 <InputError
                                     message={errorText(autosave.errors.slug)}
@@ -472,6 +524,7 @@ export default function EditPost({
                         <CardContent>
                             <RichTextEditor
                                 value={autosave.data.body}
+                                postId={post.id}
                                 onChange={(body) =>
                                     autosave.setData('body', body)
                                 }
@@ -586,6 +639,211 @@ export default function EditPost({
 
                     <Card>
                         <CardHeader>
+                            <CardTitle>SEO</CardTitle>
+                            <CardDescription>
+                                Optional overrides — search and social fall back
+                                to the title and excerpt.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid gap-4">
+                            <div className="grid gap-2">
+                                <Label htmlFor="seo-title">SEO title</Label>
+                                <Input
+                                    id="seo-title"
+                                    value={autosave.data.seo_title}
+                                    maxLength={255}
+                                    onChange={(event) =>
+                                        autosave.setData(
+                                            'seo_title',
+                                            event.target.value,
+                                        )
+                                    }
+                                    placeholder={autosave.data.title}
+                                />
+                                <div className="flex justify-between text-xs text-muted-foreground">
+                                    <InputError
+                                        message={errorText(
+                                            autosave.errors.seo_title,
+                                        )}
+                                    />
+                                    <span
+                                        className={
+                                            autosave.data.seo_title.length > 60
+                                                ? 'text-amber-600'
+                                                : undefined
+                                        }
+                                    >
+                                        {autosave.data.seo_title.length}/60
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="meta-description">
+                                    Meta description
+                                </Label>
+                                <Textarea
+                                    id="meta-description"
+                                    value={autosave.data.meta_description}
+                                    maxLength={255}
+                                    rows={3}
+                                    onChange={(event) =>
+                                        autosave.setData(
+                                            'meta_description',
+                                            event.target.value,
+                                        )
+                                    }
+                                    placeholder="Shown in search results — falls back to the excerpt"
+                                />
+                                <div className="flex justify-between text-xs text-muted-foreground">
+                                    <InputError
+                                        message={errorText(
+                                            autosave.errors.meta_description,
+                                        )}
+                                    />
+                                    <span
+                                        className={
+                                            autosave.data.meta_description
+                                                .length > 160
+                                                ? 'text-amber-600'
+                                                : undefined
+                                        }
+                                    >
+                                        {autosave.data.meta_description.length}
+                                        /160
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="canonical-url">
+                                    Canonical URL
+                                </Label>
+                                <Input
+                                    id="canonical-url"
+                                    type="url"
+                                    value={autosave.data.canonical_url}
+                                    maxLength={2048}
+                                    onChange={(event) =>
+                                        autosave.setData(
+                                            'canonical_url',
+                                            event.target.value,
+                                        )
+                                    }
+                                    placeholder="Only if this post first appeared elsewhere"
+                                />
+                                <InputError
+                                    message={errorText(
+                                        autosave.errors.canonical_url,
+                                    )}
+                                />
+                            </div>
+                            <Collapsible className="grid gap-4">
+                                <CollapsibleTrigger asChild>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="justify-between"
+                                    >
+                                        Social sharing
+                                        <ChevronsUpDown />
+                                    </Button>
+                                </CollapsibleTrigger>
+                                <CollapsibleContent className="grid gap-4">
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="og-title">
+                                            Social title
+                                        </Label>
+                                        <Input
+                                            id="og-title"
+                                            value={autosave.data.og_title}
+                                            maxLength={255}
+                                            onChange={(event) =>
+                                                autosave.setData(
+                                                    'og_title',
+                                                    event.target.value,
+                                                )
+                                            }
+                                        />
+                                        <InputError
+                                            message={errorText(
+                                                autosave.errors.og_title,
+                                            )}
+                                        />
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="og-description">
+                                            Social description
+                                        </Label>
+                                        <Textarea
+                                            id="og-description"
+                                            value={autosave.data.og_description}
+                                            maxLength={500}
+                                            rows={2}
+                                            onChange={(event) =>
+                                                autosave.setData(
+                                                    'og_description',
+                                                    event.target.value,
+                                                )
+                                            }
+                                        />
+                                        <InputError
+                                            message={errorText(
+                                                autosave.errors.og_description,
+                                            )}
+                                        />
+                                    </div>
+                                    <OgImageUploader
+                                        postId={post.id}
+                                        lockVersion={autosave.data.lock_version}
+                                        imageUrl={postState.og_image_url}
+                                        onChange={(response) => {
+                                            autosave.setData(
+                                                'lock_version',
+                                                response.lock_version,
+                                            );
+                                            autosave.setDefaults(
+                                                'lock_version',
+                                                response.lock_version,
+                                            );
+                                            setPostState((current) => ({
+                                                ...current,
+                                                og_image_url:
+                                                    response.og_image_url,
+                                                lock_version:
+                                                    response.lock_version,
+                                                updated_at: response.updated_at,
+                                            }));
+                                        }}
+                                    />
+                                </CollapsibleContent>
+                            </Collapsible>
+                            <div className="flex items-start gap-2">
+                                <Checkbox
+                                    id="noindex"
+                                    checked={autosave.data.noindex}
+                                    onCheckedChange={(checked) =>
+                                        autosave.setData(
+                                            'noindex',
+                                            checked === true,
+                                        )
+                                    }
+                                />
+                                <div className="grid gap-1">
+                                    <Label htmlFor="noindex">
+                                        Hide from search engines
+                                    </Label>
+                                    <p className="text-xs text-muted-foreground">
+                                        Adds a noindex tag and removes the post
+                                        from the sitemap. Readers can still open
+                                        it directly.
+                                    </p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
                             <CardTitle>Publishing</CardTitle>
                             <CardDescription>
                                 All fields and a featured image are required.
@@ -605,14 +863,29 @@ export default function EditPost({
                                 </Alert>
                             )}
                             {postState.status === 'published' ? (
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    disabled={publishing.processing}
-                                    onClick={unpublishPost}
-                                >
-                                    Unpublish
-                                </Button>
+                                <>
+                                    <Button
+                                        type="button"
+                                        variant={
+                                            featuredAt ? 'secondary' : 'outline'
+                                        }
+                                        disabled={featuring.processing}
+                                        onClick={toggleFeatured}
+                                    >
+                                        {featuredAt ? <StarOff /> : <Star />}
+                                        {featuredAt
+                                            ? 'Remove from featured'
+                                            : 'Feature on homepage'}
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        disabled={publishing.processing}
+                                        onClick={unpublishPost}
+                                    >
+                                        Unpublish
+                                    </Button>
+                                </>
                             ) : (
                                 <Button
                                     type="button"
@@ -689,6 +962,7 @@ export default function EditPost({
                                 lockVersion={autosave.data.lock_version}
                                 imageUrl={postState.featured_image_url}
                                 altText={autosave.data.featured_image_alt}
+                                caption={autosave.data.featured_image_caption}
                                 canRemove={postState.status === 'draft'}
                                 onAltTextChange={(value) =>
                                     autosave.setData(
@@ -696,21 +970,53 @@ export default function EditPost({
                                         value,
                                     )
                                 }
+                                onCaptionChange={(value) =>
+                                    autosave.setData(
+                                        'featured_image_caption',
+                                        value,
+                                    )
+                                }
                                 onChange={(response) => {
-                                    const nextData = {
-                                        ...autosave.data,
-                                        lock_version: response.lock_version,
-                                        featured_image_alt:
-                                            response.featured_image_alt ?? '',
-                                    };
-                                    autosave.setData(nextData);
-                                    autosave.setDefaults(nextData);
+                                    const alternativeText =
+                                        response.featured_image_alt ?? '';
+                                    autosave.setData(
+                                        'lock_version',
+                                        response.lock_version,
+                                    );
+                                    autosave.setDefaults(
+                                        'lock_version',
+                                        response.lock_version,
+                                    );
+                                    autosave.setData(
+                                        'featured_image_alt',
+                                        alternativeText,
+                                    );
+                                    autosave.setDefaults(
+                                        'featured_image_alt',
+                                        alternativeText,
+                                    );
+
+                                    if (response.featured_image_url === null) {
+                                        autosave.setData(
+                                            'featured_image_caption',
+                                            '',
+                                        );
+                                        autosave.setDefaults(
+                                            'featured_image_caption',
+                                            '',
+                                        );
+                                    }
+
                                     setPostState((current) => ({
                                         ...current,
                                         featured_image_url:
                                             response.featured_image_url,
                                         featured_image_alt:
                                             response.featured_image_alt,
+                                        featured_image_caption:
+                                            response.featured_image_url === null
+                                                ? null
+                                                : current.featured_image_caption,
                                         lock_version: response.lock_version,
                                         updated_at: response.updated_at,
                                     }));

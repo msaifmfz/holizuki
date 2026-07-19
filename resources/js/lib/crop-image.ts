@@ -51,6 +51,28 @@ export async function resizeFeaturedImage(file: File): Promise<File> {
     return canvasFile(canvas, file.name);
 }
 
+export async function resizeInlineImage(file: File): Promise<File> {
+    const image = await loadImage(file);
+    const maximumEdge = 2000;
+    const scale = Math.min(
+        1,
+        maximumEdge / image.naturalWidth,
+        maximumEdge / image.naturalHeight,
+    );
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext('2d');
+
+    if (!context) {
+        throw new Error('Your browser could not prepare the image.');
+    }
+
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    return canvasFile(canvas, file.name);
+}
+
 async function loadImage(file: File): Promise<HTMLImageElement> {
     const url = URL.createObjectURL(file);
 

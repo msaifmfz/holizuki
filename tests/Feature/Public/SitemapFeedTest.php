@@ -22,6 +22,13 @@ test('the sitemap lists public urls for published content only', function (): vo
 
     $xml = $response->getContent();
     expect($xml)->toContain(route('home'))
+        ->toContain(route('public.topics'))
+        ->toContain(route('public.archive'))
+        ->toContain(route('public.archive', ['year' => $published->published_at?->format('Y')]))
+        ->toContain(route('public.archive', [
+            'year' => $published->published_at?->format('Y'),
+            'month' => $published->published_at?->format('m'),
+        ]))
         ->toContain(route('public.posts.show', 'published-post'))
         ->toContain(route('public.categories.show', 'engineering'))
         ->toContain(route('public.tags.show', 'laravel'))

@@ -18,6 +18,10 @@ case "$role" in
         php artisan optimize
         exec frankenphp php-server --listen :8080 --root public/
         ;;
+    ssr)
+        php artisan optimize
+        exec php artisan inertia:start-ssr
+        ;;
     worker)
         php artisan optimize
         exec php artisan queue:work \
@@ -31,7 +35,8 @@ case "$role" in
         exec php artisan schedule:run --no-interaction
         ;;
     migrate)
-        exec php artisan migrate --force --no-interaction
+        php artisan migrate --force --no-interaction
+        exec php artisan posts:rebuild-metadata --missing --no-interaction
         ;;
     *)
         exec "$@"

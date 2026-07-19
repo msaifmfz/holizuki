@@ -88,3 +88,12 @@ test('administrators can read and manage the inbox', function (): void {
 test('guests cannot access the inbox', function (): void {
     $this->get(route('contact-submissions.index'))->assertRedirect(route('login'));
 });
+
+test('an array honeypot value is treated as a bot submission', function (): void {
+    $this->from(route('public.contact.create'))
+        ->post(route('public.contact.store'), contactPayload(['company' => ['Totally Real Inc.']]))
+        ->assertRedirect(route('public.contact.create'))
+        ->assertSessionDoesntHaveErrors();
+
+    expect(ContactSubmission::count())->toBe(0);
+});

@@ -43,3 +43,11 @@ test('a blank query renders the empty search state', function (): void {
             ->where('query', '')
             ->has('posts.data', 0));
 });
+
+test('an array search parameter is treated as an empty query', function (): void {
+    $this->get(route('public.search', ['q' => ['x']]))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page): AssertableInertia => $page
+            ->where('query', '')
+            ->has('posts.data', 0));
+});

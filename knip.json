@@ -8,15 +8,13 @@
     "project": ["resources/js/**/*.{ts,tsx}", "*.{js,ts}"],
     "ignoreFiles": [
         "resources/js/components/app-header.tsx",
-        "resources/js/components/ui/{badge,collapsible,icon,navigation-menu,select,toggle,toggle-group}.tsx",
+        "resources/js/components/ui/{badge,icon,navigation-menu,toggle,toggle-group}.tsx",
         "resources/js/layouts/app/app-header-layout.tsx",
         "resources/js/layouts/auth/{auth-card-layout,auth-split-layout}.tsx"
     ],
     "ignoreDependencies": [
         "@fontsource/instrument-sans",
-        "@radix-ui/react-collapsible",
         "@radix-ui/react-navigation-menu",
-        "@radix-ui/react-select",
         "@radix-ui/react-toggle",
         "@radix-ui/react-toggle-group",
         "concurrently",

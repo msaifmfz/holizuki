@@ -2,7 +2,9 @@ import { Head, Link } from '@inertiajs/react';
 import { ArrowLeft, History } from 'lucide-react';
 import { edit } from '@/actions/App/Http/Controllers/PostController';
 import { index as revisionsIndex } from '@/actions/App/Http/Controllers/PostRevisionController';
-import RichTextEditor from '@/components/rich-text-editor';
+import PublicRichText, {
+    ExpandableImage,
+} from '@/components/public/public-rich-text';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/post-editor';
@@ -58,20 +60,20 @@ export default function PostPreview({
                     )}
                     <p className="text-sm text-muted-foreground">
                         Last updated {formatDate(post.updated_at, 'long')}
+                        {' · '}
+                        {post.reading_time_minutes} min read
                     </p>
                 </header>
                 {post.featured_image_url && (
-                    <img
-                        src={post.featured_image_url}
-                        alt={post.featured_image_alt ?? ''}
-                        className="mb-10 aspect-video w-full rounded-xl border object-cover shadow-sm"
+                    <ExpandableImage
+                        attrs={{
+                            src: post.featured_image_url,
+                            alt: post.featured_image_alt,
+                            caption: post.featured_image_caption,
+                        }}
                     />
                 )}
-                <RichTextEditor
-                    value={post.body}
-                    readOnly
-                    className="border-0"
-                />
+                <PublicRichText value={post.body} />
             </article>
         </>
     );

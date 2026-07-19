@@ -1,16 +1,22 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\Settings;
 
+use App\Actions\Posts\RebuildPostMetadata;
 use App\Concerns\ResolvesUniqueSlug;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\ProfileDeleteRequest;
 use App\Http\Requests\Settings\ProfileUpdateRequest;
+use App\Models\Post;
 use App\Models\User;
+use App\Support\PublicCache;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -32,7 +38,7 @@ class ProfileController extends Controller
     /**
      * Update the user's profile information.
      */
-    public function update(ProfileUpdateRequest $request): RedirectResponse
+    public function update(ProfileUpdateRequest $request, RebuildPostMetadata $rebuildPostMetadata): RedirectResponse
     {
         $user = $request->authenticatedUser();
 
@@ -54,6 +60,11 @@ class ProfileController extends Controller
 
         $user->save();
 
+        if ($user->wasChanged('name')) {
+            $rebuildPostMetadata->handleQuery(Post::query()->where('author_id', $user->id));
+            PublicCache::flush();
+        }
+
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Profile updated.')]);
 
         return to_route('profile.edit');
@@ -62,13 +73,23 @@ class ProfileController extends Controller
     /**
      * Delete the user's profile.
      */
-    public function destroy(ProfileDeleteRequest $request): RedirectResponse
+    public function destroy(ProfileDeleteRequest $request, RebuildPostMetadata $rebuildPostMetadata): RedirectResponse
     {
         $user = $request->authenticatedUser();
+
+        $postIds = Post::query()->where('author_id', $user->id)->pluck('id');
+        $avatarPath = $user->avatar_path;
 
         Auth::logout();
 
         $user->delete();
+
+        if ($avatarPath !== null) {
+            Storage::disk('public')->delete($avatarPath);
+        }
+
+        $rebuildPostMetadata->handleQuery(Post::query()->whereKey($postIds));
+        PublicCache::flush();
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();

@@ -56,6 +56,11 @@ class User extends Authenticatable implements PasskeyUser
         'role' => UserRole::Administrator->value,
     ];
 
+    /**
+     * Administrator is the only role today, so every user passes. The
+     * exhaustive match makes static analysis flag this method as soon as a
+     * new role case is added.
+     */
     public function isAdministrator(): bool
     {
         return match ($this->role) {

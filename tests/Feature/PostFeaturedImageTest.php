@@ -26,7 +26,11 @@ test('featured images require a supported image and alternative text', function 
 });
 
 test('administrators can upload, replace, and remove a featured image', function (): void {
-    $post = Post::factory()->for($this->user, 'author')->create(['featured_image_path' => null, 'featured_image_alt' => null]);
+    $post = Post::factory()->for($this->user, 'author')->create([
+        'featured_image_path' => null,
+        'featured_image_alt' => null,
+        'featured_image_caption' => 'A previous caption',
+    ]);
 
     $response = $this->actingAs($this->user)
         ->postJson(route('posts.featured-image.store', $post), [
@@ -54,9 +58,11 @@ test('administrators can upload, replace, and remove a featured image', function
     $this->actingAs($this->user)
         ->deleteJson(route('posts.featured-image.destroy', $post), ['lock_version' => 2])
         ->assertOk()
-        ->assertJsonPath('featured_image_url', null);
+        ->assertJsonPath('featured_image_url', null)
+        ->assertJsonPath('featured_image_caption', null);
 
-    expect($post->refresh()->featured_image_path)->toBeNull();
+    expect($post->refresh()->featured_image_path)->toBeNull()
+        ->and($post->featured_image_caption)->toBeNull();
 });
 
 test('permanent deletion removes current and historical featured images', function (): void {
@@ -100,4 +106,15 @@ test('pruned revision images survive when the surrounding transaction rolls back
 
     Storage::disk('public')->assertExists('posts/old.webp');
     expect($post->revisions()->count())->toBe(1);
+});
+
+test('the featured image of a published post cannot be removed', function (): void {
+    $post = Post::factory()->published()->for($this->user, 'author')->create(['lock_version' => 0]);
+
+    $this->actingAs($this->user)
+        ->deleteJson(route('posts.featured-image.destroy', $post), ['lock_version' => 0])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['image']);
+
+    expect($post->refresh()->featured_image_path)->not->toBeNull();
 });

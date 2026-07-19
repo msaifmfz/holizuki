@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Public;
 
+use App\Actions\Posts\BuildReaderDocument;
 use App\Concerns\BuildsPublicPostCards;
+use App\Enums\PostStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Post;
+use App\Models\PostRedirect;
 use App\Models\Tag;
-use App\Models\User;
 use App\Support\Seo;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -18,7 +22,7 @@ class PostViewController extends Controller
 {
     use BuildsPublicPostCards;
 
-    public function show(string $slug): Response
+    public function show(string $slug, BuildReaderDocument $buildReaderDocument): Response|RedirectResponse
     {
         $post = Post::query()
             ->published()
@@ -28,16 +32,17 @@ class PostViewController extends Controller
                 'author:id,name,author_slug,avatar_path,bio,social_links',
                 'tags:id,name,slug',
             ])
-            ->firstOrFail();
+            ->first();
 
-        $related = $post->category_id === null
-            ? collect()
-            : $this->publicPostQuery()
-                ->where('category_id', $post->category_id)
-                ->whereKeyNot($post->id)
-                ->limit(3)
-                ->get()
-                ->map(fn (Post $relatedPost): array => $this->postCard($relatedPost));
+        if ($post === null) {
+            return $this->redirectFromOldSlug($slug);
+        }
+
+        $reader = $buildReaderDocument->handle($post);
+        $related = collect($this->relatedPosts($post))
+            ->map(fn (Post $relatedPost): array => $this->postCard($relatedPost));
+        $previous = $this->previousPost($post);
+        $next = $this->nextPost($post);
 
         $imageUrl = $post->featured_image_path === null
             ? null
@@ -48,12 +53,15 @@ class PostViewController extends Controller
                 'id' => $post->id,
                 'title' => $post->title,
                 'slug' => $post->slug,
+                'seo_title' => $post->seo_title,
                 'excerpt' => $post->excerpt,
-                'body' => $post->body,
+                'body' => $reader['document'],
                 'featured_image_url' => $imageUrl,
                 'featured_image_alt' => $post->featured_image_alt,
+                'featured_image_caption' => $post->featured_image_caption,
+                'reading_time_minutes' => $post->reading_time_minutes ?? 1,
                 'published_at' => $post->published_at?->toISOString(),
-                'updated_at' => $post->updated_at?->toISOString(),
+                'updated_at' => ($post->content_updated_at ?? $post->published_at)?->toISOString(),
                 'category' => $post->category === null ? null : [
                     'name' => $post->category->name,
                     'slug' => $post->category->slug,
@@ -65,55 +73,103 @@ class PostViewController extends Controller
                 'author' => $post->author === null ? null : $this->authorProfile($post->author),
             ],
             'related' => $related,
-            'seo' => Seo::make(
-                title: (string) $post->title,
-                description: $post->excerpt,
-                canonical: route('public.posts.show', $post->slug),
-                image: $imageUrl,
-                type: 'article',
-                publishedTime: $post->published_at?->toISOString(),
-                modifiedTime: $post->updated_at?->toISOString(),
-                author: $post->author?->name,
-                jsonLd: $this->articleJsonLd($post, $imageUrl),
-            ),
+            'previous' => $previous instanceof Post ? $this->postCard($previous) : null,
+            'next' => $next instanceof Post ? $this->postCard($next) : null,
+            'table_of_contents' => count($reader['table_of_contents']) >= 3 ? $reader['table_of_contents'] : [],
+            'seo' => Seo::forPost($post, $imageUrl, Seo::articleGraph($post, $imageUrl)),
         ]);
     }
 
-    /** @return array<string, mixed> */
-    private function authorProfile(User $author): array
+    /**
+     * Slug changes on published posts leave a post_redirects row behind;
+     * resolve the old URL to the post's current slug with a permanent redirect.
+     */
+    private function redirectFromOldSlug(string $slug): RedirectResponse
     {
-        return [
-            'name' => $author->name,
-            'slug' => $author->author_slug,
-            'avatar_url' => $author->avatar_url,
-            'bio' => $author->bio,
-            'social_links' => $author->social_links,
-        ];
+        $post = PostRedirect::query()->where('old_slug', $slug)->first()?->post;
+
+        abort_if($post === null || $post->status !== PostStatus::Published, 404);
+
+        return to_route('public.posts.show', $post->slug, 301);
     }
 
-    /** @return array<string, mixed> */
-    private function articleJsonLd(Post $post, ?string $imageUrl): array
+    /** @return list<Post> */
+    private function relatedPosts(Post $post): array
     {
-        return array_filter([
-            '@context' => 'https://schema.org',
-            '@type' => 'Article',
-            'headline' => $post->title,
-            'description' => $post->excerpt,
-            'image' => $imageUrl,
-            'datePublished' => $post->published_at?->toISOString(),
-            'dateModified' => $post->updated_at?->toISOString(),
-            'mainEntityOfPage' => route('public.posts.show', $post->slug),
-            'author' => $post->author === null ? null : array_filter([
-                '@type' => 'Person',
-                'name' => $post->author->name,
-                'url' => $post->author->author_slug === null
-                    ? null
-                    : route('public.authors.show', $post->author->author_slug),
-            ], static fn (mixed $value): bool => $value !== null),
-            'publisher' => [
-                '@type' => 'Organization',
-                'name' => Seo::siteName(),
-            ],
-        ], static fn (mixed $value): bool => $value !== null);
+        $related = [];
+        $excludedIds = [$post->id];
+        $tagIds = $post->tags->modelKeys();
+
+        if ($tagIds !== []) {
+            $tagMatches = $this->publicPostQuery()
+                ->whereKeyNot($excludedIds)
+                ->whereHas('tags', fn (Builder $query): Builder => $query->whereKey($tagIds))
+                ->withCount([
+                    'tags as shared_tags_count' => fn (Builder $query): Builder => $query->whereKey($tagIds),
+                ])
+                ->reorder()
+                ->orderByDesc('shared_tags_count')
+                ->latest('published_at')
+                ->orderByDesc('id')
+                ->limit(3)
+                ->get();
+            foreach ($tagMatches as $tagMatch) {
+                $related[] = $tagMatch;
+            }
+            $excludedIds = [...$excludedIds, ...$tagMatches->modelKeys()];
+        }
+
+        if (count($related) < 3 && $post->category_id !== null) {
+            $categoryMatches = $this->publicPostQuery()
+                ->whereKeyNot($excludedIds)
+                ->where('category_id', $post->category_id)
+                ->limit(3 - count($related))
+                ->get();
+            foreach ($categoryMatches as $categoryMatch) {
+                $related[] = $categoryMatch;
+            }
+            $excludedIds = [...$excludedIds, ...$categoryMatches->modelKeys()];
+        }
+
+        if (count($related) < 3) {
+            $recent = $this->publicPostQuery()
+                ->whereKeyNot($excludedIds)
+                ->limit(3 - count($related))
+                ->get();
+            foreach ($recent as $recentPost) {
+                $related[] = $recentPost;
+            }
+        }
+
+        return $related;
+    }
+
+    private function previousPost(Post $post): ?Post
+    {
+        return $this->publicPostQuery()
+            ->where(function (Builder $query) use ($post): void {
+                $query
+                    ->where('published_at', '<', $post->published_at)
+                    ->orWhere(function (Builder $sameTime) use ($post): void {
+                        $sameTime->where('published_at', $post->published_at)->where('id', '<', $post->id);
+                    });
+            })
+            ->first();
+    }
+
+    private function nextPost(Post $post): ?Post
+    {
+        return $this->publicPostQuery()
+            ->where(function (Builder $query) use ($post): void {
+                $query
+                    ->where('published_at', '>', $post->published_at)
+                    ->orWhere(function (Builder $sameTime) use ($post): void {
+                        $sameTime->where('published_at', $post->published_at)->where('id', '>', $post->id);
+                    });
+            })
+            ->reorder()
+            ->oldest('published_at')
+            ->orderBy('id')
+            ->first();
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Concerns\BuildsPostListing;
 use App\Models\Post;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,31 +15,27 @@ use Inertia\Response;
 
 class PostTrashController extends Controller
 {
+    use BuildsPostListing;
+
     public function index(Request $request): Response
     {
         Gate::authorize('viewAny', Post::class);
-        $search = $request->string('search')->trim()->toString();
+        $search = $request->query('search');
+        $search = is_string($search) ? trim($search) : '';
         $query = Post::onlyTrashed()
-            ->select(['id', 'author_id', 'title', 'slug', 'deleted_at', 'updated_at'])
-            ->with('author:id,name')
+            ->select(['id', 'author_id', 'updated_by_id', 'title', 'slug', 'status', 'scheduled_at', 'published_at', 'featured_at', 'deleted_at', 'updated_at'])
+            ->with(['author:id,name', 'lastEditor:id,name'])
             ->search($search)
             ->latest('deleted_at')
             ->orderByDesc('id');
 
         return Inertia::render('posts/index', [
             'posts' => $query->paginate(15)->withQueryString()->through(fn (Post $post): array => [
-                'id' => $post->id,
-                'title' => $post->title ?? 'Untitled post',
-                'slug' => $post->slug,
+                ...$this->postSummary($post),
                 'status' => 'trashed',
-                'author' => $post->author?->name,
-                'last_editor' => null,
-                'scheduled_at' => null,
-                'published_at' => null,
-                'updated_at' => $post->updated_at?->toISOString(),
             ]),
             'filters' => ['search' => $search, 'status' => ''],
-            'counts' => ['all' => Post::count(), 'draft' => 0, 'scheduled' => 0, 'published' => 0, 'trash' => Post::onlyTrashed()->count()],
+            'counts' => $this->postStatusCounts(),
             'trash' => true,
         ]);
     }
@@ -55,7 +52,13 @@ class PostTrashController extends Controller
     public function forceDestroy(Post $post): RedirectResponse
     {
         Gate::authorize('forceDelete', $post);
-        $paths = $post->revisions()->pluck('featured_image_path')->push($post->featured_image_path)->filter()->unique();
+        $paths = $post->revisions()
+            ->pluck('featured_image_path')
+            ->merge($post->revisions()->pluck('og_image_path'))
+            ->merge($post->media()->pluck('path'))
+            ->push($post->featured_image_path, $post->og_image_path)
+            ->filter()
+            ->unique();
         $post->forceDelete();
         Storage::disk('public')->delete($paths->all());
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Post permanently deleted.')]);

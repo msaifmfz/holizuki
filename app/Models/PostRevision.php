@@ -25,11 +25,21 @@ use Override;
  * @property array<string, mixed>|null $body
  * @property string|null $featured_image_path
  * @property string|null $featured_image_alt
+ * @property string|null $featured_image_caption
+ * @property string|null $seo_title
+ * @property string|null $meta_description
+ * @property string|null $canonical_url
+ * @property string|null $og_title
+ * @property string|null $og_description
+ * @property string|null $og_image_path
+ * @property bool $noindex
  * @property CarbonInterface $created_at
  */
 #[Fillable([
     'post_id', 'editor_id', 'revision_number', 'event', 'title', 'slug', 'excerpt',
-    'body', 'featured_image_path', 'featured_image_alt',
+    'body', 'featured_image_path', 'featured_image_alt', 'featured_image_caption',
+    'seo_title', 'meta_description', 'canonical_url', 'og_title', 'og_description',
+    'og_image_path', 'noindex',
 ])]
 class PostRevision extends Model
 {
@@ -58,6 +68,7 @@ class PostRevision extends Model
             'body' => 'array',
             'event' => PostRevisionEvent::class,
             'revision_number' => 'integer',
+            'noindex' => 'boolean',
             'created_at' => 'datetime',
         ];
     }

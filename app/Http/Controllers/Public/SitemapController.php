@@ -32,21 +32,36 @@ class SitemapController extends Controller
     {
         $urls = collect([
             ['loc' => route('home')],
+            ['loc' => route('public.topics')],
+            ['loc' => route('public.archive')],
             ['loc' => route('public.about')],
             ['loc' => route('public.contact.create')],
             ['loc' => route('public.privacy')],
             ['loc' => route('public.terms')],
         ]);
 
+        $posts = Post::query()
+            ->published()
+            ->where('noindex', false)
+            ->orderByDesc('published_at')
+            ->get(['slug', 'published_at', 'content_updated_at']);
+
+        $urls = $urls->merge($posts->map(fn (Post $post): array => [
+            'loc' => route('public.posts.show', $post->slug),
+            'lastmod' => (string) ($post->content_updated_at ?? $post->published_at)?->toISOString(),
+        ]));
+
         $urls = $urls->merge(
-            Post::query()
-                ->published()
-                ->orderByDesc('published_at')
-                ->get(['slug', 'updated_at'])
-                ->map(fn (Post $post): array => [
-                    'loc' => route('public.posts.show', $post->slug),
-                    'lastmod' => (string) $post->updated_at?->toISOString(),
-                ]),
+            $posts
+                ->filter(fn (Post $post): bool => $post->published_at !== null)
+                ->flatMap(fn (Post $post): array => [
+                    ['loc' => route('public.archive', ['year' => $post->published_at?->format('Y')])],
+                    ['loc' => route('public.archive', [
+                        'year' => $post->published_at?->format('Y'),
+                        'month' => $post->published_at?->format('m'),
+                    ])],
+                ])
+                ->unique('loc'),
         );
 
         $urls = $urls->merge(

@@ -13,6 +13,8 @@ class PublicCache
 
     public const string FEED_KEY = 'public.feed';
 
+    public const string POPULAR_POSTS_KEY = 'public.popular-posts';
+
     /**
      * Forget every cached public listing that depends on published posts.
      */
@@ -20,6 +22,7 @@ class PublicCache
     {
         Cache::forget(self::SITEMAP_KEY);
         Cache::forget(self::FEED_KEY);
+        Cache::forget(self::POPULAR_POSTS_KEY);
         Cache::forget(Category::FOOTER_CACHE_KEY);
     }
 }

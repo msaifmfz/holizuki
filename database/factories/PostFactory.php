@@ -4,17 +4,27 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
+use App\Actions\Posts\RebuildPostMetadata;
 use App\Enums\PostStatus;
 use App\Models\Category;
 use App\Models\Post;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Override;
 
 /**
  * @extends Factory<Post>
  */
 class PostFactory extends Factory
 {
+    #[Override]
+    public function configure(): static
+    {
+        return $this->afterCreating(function (Post $post): void {
+            resolve(RebuildPostMetadata::class)->handle($post);
+        });
+    }
+
     /**
      * Define the model's default state.
      *
@@ -41,6 +51,7 @@ class PostFactory extends Factory
             ],
             'featured_image_path' => 'posts/featured-image.webp',
             'featured_image_alt' => fake()->sentence(),
+            'featured_image_caption' => fake()->optional()->sentence(),
             'status' => PostStatus::Draft,
         ];
     }
@@ -51,6 +62,18 @@ class PostFactory extends Factory
             'status' => PostStatus::Published,
             'published_at' => now(),
             'slug_locked_at' => now(),
+            'content_updated_at' => now(),
+        ]);
+    }
+
+    public function withSeoOverrides(): static
+    {
+        return $this->state(fn (): array => [
+            'seo_title' => fake()->sentence(5),
+            'meta_description' => fake()->text(150),
+            'canonical_url' => fake()->url(),
+            'og_title' => fake()->sentence(5),
+            'og_description' => fake()->text(150),
         ]);
     }
 
@@ -59,6 +82,13 @@ class PostFactory extends Factory
         return $this->state(fn (): array => [
             'status' => PostStatus::Draft,
             'scheduled_at' => now()->addDay(),
+        ]);
+    }
+
+    public function featured(): static
+    {
+        return $this->published()->state(fn (): array => [
+            'featured_at' => now(),
         ]);
     }
 }

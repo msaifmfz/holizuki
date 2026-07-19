@@ -4,7 +4,10 @@ use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ContactSubmissionController;
 use App\Http\Controllers\PostAutosaveController;
 use App\Http\Controllers\PostController;
+use App\Http\Controllers\PostFeatureController;
 use App\Http\Controllers\PostFeaturedImageController;
+use App\Http\Controllers\PostInlineImageController;
+use App\Http\Controllers\PostOgImageController;
 use App\Http\Controllers\PostPublishingController;
 use App\Http\Controllers\PostRevisionController;
 use App\Http\Controllers\PostTrashController;
@@ -34,6 +37,11 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::post('posts/{post}/unpublish', [PostPublishingController::class, 'unpublish'])->name('posts.unpublish');
     Route::post('posts/{post}/featured-image', [PostFeaturedImageController::class, 'store'])->name('posts.featured-image.store');
     Route::delete('posts/{post}/featured-image', [PostFeaturedImageController::class, 'destroy'])->name('posts.featured-image.destroy');
+    Route::post('posts/{post}/og-image', [PostOgImageController::class, 'store'])->name('posts.og-image.store');
+    Route::delete('posts/{post}/og-image', [PostOgImageController::class, 'destroy'])->name('posts.og-image.destroy');
+    Route::post('posts/{post}/feature', [PostFeatureController::class, 'store'])->name('posts.feature.store');
+    Route::delete('posts/{post}/feature', [PostFeatureController::class, 'destroy'])->name('posts.feature.destroy');
+    Route::post('posts/{post}/inline-images', [PostInlineImageController::class, 'store'])->name('posts.inline-images.store');
 
     Route::scopeBindings()->group(function (): void {
         Route::get('posts/{post}/revisions', [PostRevisionController::class, 'index'])->name('posts.revisions.index');

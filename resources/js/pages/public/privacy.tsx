@@ -40,6 +40,20 @@ export default function Privacy() {
                     </section>
                     <section className="grid gap-3">
                         <h2 className="font-display text-2xl font-semibold">
+                            Anonymous post popularity
+                        </h2>
+                        <p>
+                            After a post has been visible for ten seconds, the
+                            site records one anonymous first-party view for that
+                            post per session each day. The record uses a daily
+                            one-way session signature and does not store your IP
+                            address, browser details, or a reusable visitor
+                            identifier. View records are kept for 90 days and
+                            are used only to surface popular writing.
+                        </p>
+                    </section>
+                    <section className="grid gap-3">
+                        <h2 className="font-display text-2xl font-semibold">
                             Cookies
                         </h2>
                         <p>

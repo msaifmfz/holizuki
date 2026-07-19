@@ -20,7 +20,8 @@ class SearchController extends Controller
 
     public function __invoke(Request $request): Response
     {
-        $query = Str::limit($request->string('q')->trim()->toString(), 100, '');
+        $term = $request->query('q');
+        $query = is_string($term) ? Str::limit(trim($term), 100, '') : '';
 
         $posts = $query === ''
             ? new LengthAwarePaginator([], 0, 12, 1, ['path' => $request->url()])

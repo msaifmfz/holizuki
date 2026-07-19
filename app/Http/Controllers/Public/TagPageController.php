@@ -10,6 +10,7 @@ use App\Models\Post;
 use App\Models\Tag;
 use App\Support\Seo;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -17,7 +18,7 @@ class TagPageController extends Controller
 {
     use BuildsPublicPostCards;
 
-    public function show(Tag $tag): Response
+    public function show(Request $request, Tag $tag): Response
     {
         $posts = $this->publicPostQuery()
             ->whereHas('tags', fn (Builder $query) => $query->whereKey($tag->id))
@@ -35,7 +36,12 @@ class TagPageController extends Controller
             'seo' => Seo::make(
                 title: '#'.$tag->name.' — '.Seo::siteName(),
                 description: 'Posts tagged “'.$tag->name.'”.',
-                canonical: route('public.tags.show', $tag->slug),
+                canonical: route('public.tags.show', array_filter([
+                    'tag' => $tag->slug,
+                    'page' => $request->integer('page', 1) > 1 ? $request->integer('page') : null,
+                ], static fn (mixed $value): bool => $value !== null)),
+                prevUrl: $posts->previousPageUrl(),
+                nextUrl: $posts->nextPageUrl(),
             ),
         ]);
     }

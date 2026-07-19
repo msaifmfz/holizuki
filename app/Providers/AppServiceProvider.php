@@ -1,8 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Providers;
 
 use App\Models\User;
+use App\Support\ReaderIdentity;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
@@ -43,6 +46,7 @@ class AppServiceProvider extends ServiceProvider
         $this->configureAuthorization();
         $this->configureRateLimiting();
         $this->configureErrorPages();
+        $this->configureSsr();
     }
 
     /**
@@ -74,9 +78,20 @@ class AppServiceProvider extends ServiceProvider
         Gate::before(static fn (User $user): ?bool => $user->isAdministrator() ? true : null);
     }
 
+    /**
+     * Only public pages benefit from server-side rendering; authenticated
+     * pages are crawler-invisible and the post editor (TipTap) cannot render
+     * on the server.
+     */
+    private function configureSsr(): void
+    {
+        Inertia::disableSsr(static fn (): bool => request()->user() !== null);
+    }
+
     private function configureRateLimiting(): void
     {
         RateLimiter::for('contact', static fn (Request $request): Limit => Limit::perHour(5)->by((string) $request->ip()));
+        RateLimiter::for('post-views', static fn (Request $request): Limit => Limit::perMinute(30)->by(ReaderIdentity::limiterKey($request)));
     }
 
     /**

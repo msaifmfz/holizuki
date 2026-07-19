@@ -200,6 +200,131 @@
     .rich-text-content .tiptap hr {
         @apply my-8 border-border;
     }
+
+    .rich-text-content .tiptap img {
+        @apply my-6 h-auto max-w-full rounded-lg border;
+    }
+
+    .public-rich-text {
+        @apply text-[1.0625rem] leading-8 text-foreground sm:text-lg sm:leading-9;
+    }
+
+    .public-rich-text h2 {
+        @apply mt-12 mb-4 scroll-mt-24 font-display text-3xl leading-tight font-semibold tracking-tight text-balance outline-none first:mt-0;
+    }
+
+    .public-rich-text h3 {
+        @apply mt-9 mb-3 scroll-mt-24 font-display text-2xl leading-tight font-semibold tracking-tight text-balance outline-none;
+    }
+
+    .public-rich-text p {
+        @apply my-5;
+    }
+
+    .public-rich-text ul {
+        @apply my-6 list-disc space-y-2 pl-7;
+    }
+
+    .public-rich-text ol {
+        @apply my-6 list-decimal space-y-2 pl-7;
+    }
+
+    .public-rich-text li > p {
+        @apply my-1;
+    }
+
+    .public-rich-text blockquote {
+        @apply my-8 border-l-4 border-foreground/25 pl-5 font-display text-xl leading-8 text-muted-foreground italic;
+    }
+
+    .public-rich-text :not(pre) > code {
+        @apply rounded bg-muted px-1.5 py-0.5 font-mono text-[0.9em];
+    }
+
+    .public-rich-text a {
+        @apply font-medium underline decoration-foreground/40 underline-offset-4 transition-colors hover:decoration-foreground;
+    }
+
+    .public-rich-text hr {
+        @apply my-12 border-border;
+    }
+
+    .article-image {
+        @apply my-8 grid gap-2;
+    }
+
+    .article-image img {
+        @apply border bg-muted object-contain shadow-sm;
+    }
+
+    .article-image figcaption {
+        @apply px-2 text-center text-sm leading-6 text-muted-foreground;
+    }
+
+    .code-block {
+        @apply my-8 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950 text-sm text-neutral-100 shadow-sm;
+    }
+
+    .code-block-toolbar {
+        @apply flex items-center justify-between gap-3 border-b border-white/10 px-3 py-1.5 font-sans text-xs text-neutral-400;
+    }
+
+    .code-block pre {
+        @apply overflow-x-auto p-4 font-mono leading-6;
+    }
+
+    .code-block code {
+        @apply bg-transparent p-0 text-inherit;
+    }
+
+    .hljs-comment,
+    .hljs-quote {
+        color: oklch(0.7 0 0);
+    }
+
+    .hljs-keyword,
+    .hljs-selector-tag,
+    .hljs-literal,
+    .hljs-type {
+        color: oklch(0.78 0.13 316);
+    }
+
+    .hljs-string,
+    .hljs-attr,
+    .hljs-template-tag,
+    .hljs-template-variable {
+        color: oklch(0.82 0.12 151);
+    }
+
+    .hljs-title,
+    .hljs-section,
+    .hljs-function .hljs-title,
+    .hljs-selector-id,
+    .hljs-selector-class {
+        color: oklch(0.82 0.12 84);
+    }
+
+    .hljs-number,
+    .hljs-symbol,
+    .hljs-variable,
+    .hljs-regexp,
+    .hljs-link {
+        color: oklch(0.78 0.13 228);
+    }
+
+    .hljs-built_in,
+    .hljs-name,
+    .hljs-meta {
+        color: oklch(0.78 0.15 32);
+    }
+
+    .hljs-addition {
+        @apply bg-emerald-950 text-emerald-200;
+    }
+
+    .hljs-deletion {
+        @apply bg-red-950 text-red-200;
+    }
 }
 
 /* Public blog signature: a soft lunar halo (the "zuki" in Holizuki) used
@@ -223,5 +348,81 @@
             var(--foreground) 15%,
             color-mix(in oklab, var(--foreground) 45%, transparent) 100%
         );
+    }
+}
+
+@media print {
+    @page {
+        margin: 1.8cm;
+    }
+
+    :root,
+    .dark {
+        --background: white;
+        --foreground: black;
+        --muted: white;
+        --muted-foreground: oklch(0.35 0 0);
+        --border: oklch(0.75 0 0);
+    }
+
+    body {
+        background: white !important;
+        color: black !important;
+        font-size: 11pt;
+    }
+
+    .site-header,
+    .site-footer,
+    .public-breadcrumbs,
+    .post-toc,
+    .post-navigation,
+    .post-tags,
+    .related-posts,
+    .author-social-links,
+    [data-slot='dialog-portal'] {
+        display: none !important;
+    }
+
+    main,
+    article,
+    .public-rich-text {
+        width: auto !important;
+        max-width: none !important;
+        padding: 0 !important;
+    }
+
+    .public-rich-text {
+        font-size: 11pt;
+        line-height: 1.65;
+    }
+
+    .public-rich-text h2,
+    .public-rich-text h3,
+    .article-image,
+    .code-block,
+    blockquote {
+        break-inside: avoid;
+    }
+
+    .code-block {
+        border-color: oklch(0.65 0 0);
+        background: oklch(0.97 0 0) !important;
+        color: black !important;
+        box-shadow: none;
+        white-space: pre-wrap;
+    }
+
+    .code-block-toolbar button,
+    .article-image button span {
+        display: none !important;
+    }
+
+    .article-image button {
+        pointer-events: none;
+    }
+
+    a {
+        color: black !important;
+        text-decoration-color: oklch(0.4 0 0) !important;
     }
 }

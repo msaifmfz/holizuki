@@ -46,9 +46,15 @@
                 <link rel="canonical" href="{{ $seo['canonical'] }}">
                 <meta property="og:url" content="{{ $seo['canonical'] }}">
             @endisset
+            @isset($seo['prev_url'])
+                <link rel="prev" href="{{ $seo['prev_url'] }}">
+            @endisset
+            @isset($seo['next_url'])
+                <link rel="next" href="{{ $seo['next_url'] }}">
+            @endisset
             <meta property="og:site_name" content="{{ config('app.name', 'Holizuki') }}">
-            <meta property="og:title" content="{{ $seo['title'] }}">
-            <meta property="og:description" content="{{ $seo['description'] }}">
+            <meta property="og:title" content="{{ $seo['og_title'] ?? $seo['title'] }}">
+            <meta property="og:description" content="{{ $seo['og_description'] ?? $seo['description'] }}">
             <meta property="og:type" content="{{ $seo['type'] }}">
             @isset($seo['image'])
                 <meta property="og:image" content="{{ $seo['image'] }}">
@@ -63,8 +69,8 @@
                 <meta name="author" content="{{ $seo['author'] }}">
             @endisset
             <meta name="twitter:card" content="{{ isset($seo['image']) ? 'summary_large_image' : 'summary' }}">
-            <meta name="twitter:title" content="{{ $seo['title'] }}">
-            <meta name="twitter:description" content="{{ $seo['description'] }}">
+            <meta name="twitter:title" content="{{ $seo['og_title'] ?? $seo['title'] }}">
+            <meta name="twitter:description" content="{{ $seo['og_description'] ?? $seo['description'] }}">
             @isset($seo['json_ld'])
                 <script type="application/ld+json">{!! json_encode($seo['json_ld'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}</script>
             @endisset

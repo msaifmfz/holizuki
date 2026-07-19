@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Middleware;
 
 use App\Enums\PostStatus;
@@ -21,17 +23,6 @@ class HandleInertiaRequests extends Middleware
      */
     #[Override]
     protected $rootView = 'app';
-
-    /**
-     * Determines the current asset version.
-     *
-     * @see https://inertiajs.com/asset-versioning
-     */
-    #[Override]
-    public function version(Request $request): ?string
-    {
-        return parent::version($request);
-    }
 
     /**
      * Define the props that are shared by default.

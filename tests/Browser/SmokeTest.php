@@ -13,6 +13,7 @@ it('renders public pages without browser errors', function (): void {
         'slug' => 'smoke-post',
         'category_id' => $category->id,
         'featured_image_path' => null,
+        'published_at' => '2026-07-18 12:00:00',
     ]);
     $post->tags()->attach(Tag::factory()->create(['slug' => 'smoke-tag']));
 
@@ -23,6 +24,10 @@ it('renders public pages without browser errors', function (): void {
         '/tags/smoke-tag',
         '/authors/smoke-author',
         '/search?q=smoke',
+        '/topics',
+        '/archive',
+        '/archive/2026',
+        '/archive/2026/07',
         '/about',
         '/contact',
         '/privacy',

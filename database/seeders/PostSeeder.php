@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Actions\Posts\RebuildPostMetadata;
 use App\Models\Category;
 use App\Models\Post;
 use App\Models\Tag;
@@ -14,7 +15,7 @@ class PostSeeder extends Seeder
     /**
      * Run the database seeds.
      */
-    public function run(): void
+    public function run(RebuildPostMetadata $rebuildPostMetadata): void
     {
         $categories = Category::factory()->count(4)->create();
         $tags = Tag::factory()->count(10)->create();
@@ -25,6 +26,7 @@ class PostSeeder extends Seeder
 
         foreach ($published->concat($scheduled)->concat($drafts) as $post) {
             $post->tags()->attach($tags->random(random_int(2, 4))->pluck('id'));
+            $rebuildPostMetadata->handle($post->unsetRelations());
         }
     }
 }

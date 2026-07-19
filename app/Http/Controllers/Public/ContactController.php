@@ -30,8 +30,9 @@ class ContactController extends Controller
          * The "company" field is a honeypot: it is hidden from humans, so a
          * filled value means a bot. Return the normal success response without
          * storing anything, so bots get no signal that they were caught.
+         * filled() tolerates non-string input, unlike string().
          */
-        if ($request->string('company')->isNotEmpty()) {
+        if ($request->filled('company')) {
             Inertia::flash('toast', ['type' => 'success', 'message' => __('Thanks! Your message has been sent.')]);
 
             return back();

@@ -103,6 +103,30 @@ test('a complete draft can publish and unpublish without changing its stable slu
         ->and($post->published_at)->not->toBeNull();
 });
 
+test('republishing preserves the original publication chronology', function (): void {
+    Date::setTestNow('2026-07-18 12:00:00');
+    $originalPublishedAt = now()->subMonths(6)->startOfSecond();
+    $post = Post::factory()->published()->for($this->user, 'author')->create([
+        'body' => $this->body,
+        'published_at' => $originalPublishedAt,
+        'lock_version' => 0,
+    ]);
+
+    $this->actingAs($this->user)
+        ->postJson(route('posts.unpublish', $post), ['lock_version' => 0])
+        ->assertOk()
+        ->assertJsonPath('lock_version', 1);
+
+    Date::setTestNow('2026-07-19 12:00:00');
+
+    $this->actingAs($this->user)
+        ->postJson(route('posts.publish', $post), ['lock_version' => 1])
+        ->assertOk()
+        ->assertJsonPath('lock_version', 2);
+
+    expect($post->refresh()->published_at?->equalTo($originalPublishedAt))->toBeTrue();
+});
+
 test('future publishing is scheduled in UTC and the command publishes only due posts', function (): void {
     Date::setTestNow('2026-07-12 12:00:00');
     $due = Post::factory()->scheduled()->for($this->user, 'author')->create([
@@ -124,7 +148,7 @@ test('future publishing is scheduled in UTC and the command publishes only due p
 
 test('administrators can schedule a complete draft for a future instant', function (): void {
     $post = Post::factory()->for($this->user, 'author')->create(['body' => $this->body]);
-    $scheduledAt = now()->addDay()->toISOString();
+    $scheduledAt = now()->addDay()->startOfSecond()->toISOString();
 
     $this->actingAs($this->user)
         ->postJson(route('posts.schedule', $post), ['lock_version' => 0, 'scheduled_at' => $scheduledAt])
@@ -132,7 +156,7 @@ test('administrators can schedule a complete draft for a future instant', functi
         ->assertJsonPath('status', 'scheduled');
 
     expect($post->refresh()->status)->toBe(PostStatus::Draft)
-        ->and($post->scheduled_at?->toISOString())->toBe(now()->addDay()->startOfSecond()->toISOString());
+        ->and($post->scheduled_at?->toISOString())->toBe($scheduledAt);
 });
 
 test('scheduled publishing skips a post that is no longer scheduled', function (): void {

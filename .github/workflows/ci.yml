@@ -84,6 +84,57 @@ jobs:
       - name: Run backend tests with coverage
         run: devbox run -- composer test:coverage
 
+  postgres-reader-tests:
+    name: PostgreSQL reader tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.3
+        env:
+          POSTGRES_DB: holizuki
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d holizuki"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_ENV: testing
+      DB_CONNECTION: pgsql
+      DB_DATABASE: holizuki
+      DB_HOST: 127.0.0.1
+      DB_PASSWORD: postgres
+      DB_PORT: 5432
+      DB_URL: ''
+      DB_USERNAME: postgres
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Bootstrap toolchain
+        uses: ./.github/actions/bootstrap
+        with:
+          install-composer: 'true'
+
+      - name: Prepare application
+        run: |
+          cp .env.example .env
+          devbox run -- php artisan key:generate --no-interaction
+
+      - name: Run reader tests against PostgreSQL
+        run: >-
+          devbox run -- php artisan test --compact
+          tests/Feature/PostReaderMetadataTest.php
+          tests/Feature/Public/ReaderDiscoveryTest.php
+          tests/Feature/Public/PostViewTrackingTest.php
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
@@ -102,7 +153,7 @@ jobs:
           install-npm: 'true'
 
       - name: Build production assets
-        run: devbox run -- npm run build
+        run: devbox run -- npm run build:ssr
 
       - name: Run frontend quality gates
         run: devbox run -- npm run check

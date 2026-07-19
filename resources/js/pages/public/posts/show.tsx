@@ -1,15 +1,32 @@
 import { Head, Link } from '@inertiajs/react';
-import { Github, Globe, Linkedin, Twitter } from 'lucide-react';
+import {
+    ArrowLeft,
+    ArrowRight,
+    Github,
+    Globe,
+    Linkedin,
+    Twitter,
+} from 'lucide-react';
 import AuthorByline from '@/components/public/author-byline';
 import PostGrid from '@/components/public/post-grid';
-import RichTextEditor from '@/components/rich-text-editor';
+import PostTableOfContents from '@/components/public/post-table-of-contents';
+import PublicRichText, {
+    ExpandableImage,
+} from '@/components/public/public-rich-text';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { useInitials } from '@/hooks/use-initials';
+import { usePostView } from '@/hooks/use-post-view';
 import { show as authorShow } from '@/routes/public/authors';
 import { show as categoryShow } from '@/routes/public/categories';
+import { show as postShow } from '@/routes/public/posts';
 import { show as tagShow } from '@/routes/public/tags';
-import type { PublicPostCard, PublicPostDetail, SocialLinks } from '@/types';
+import type {
+    PublicPostCard,
+    PublicPostDetail,
+    SocialLinks,
+    TableOfContentsItem,
+} from '@/types';
 
 const socialIcons: Array<{
     key: keyof SocialLinks;
@@ -25,15 +42,26 @@ const socialIcons: Array<{
 type Props = {
     post: PublicPostDetail;
     related: PublicPostCard[];
+    previous: PublicPostCard | null;
+    next: PublicPostCard | null;
+    table_of_contents: TableOfContentsItem[];
 };
 
-export default function PublicPostShow({ post, related }: Props) {
+export default function PublicPostShow({
+    post,
+    related,
+    previous,
+    next,
+    table_of_contents: tableOfContents,
+}: Props) {
+    usePostView(post.slug);
+
     return (
         <>
-            <Head title={post.title} />
+            <Head title={post.seo_title ?? post.title} />
 
-            <article className="mx-auto w-full max-w-3xl px-4 py-12 sm:py-16">
-                <header className="mb-10 grid gap-5 text-center">
+            <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:py-16">
+                <header className="mx-auto mb-10 grid max-w-3xl gap-5 text-center">
                     <p className="flex items-center justify-center gap-3 text-xs font-medium tracking-widest text-muted-foreground uppercase">
                         {post.category && (
                             <Link
@@ -44,7 +72,10 @@ export default function PublicPostShow({ post, related }: Props) {
                             </Link>
                         )}
                     </p>
-                    <h1 className="font-display text-4xl leading-tight font-semibold tracking-tight text-balance sm:text-5xl">
+                    <h1
+                        id="post-title"
+                        className="font-display text-4xl leading-tight font-semibold tracking-tight text-balance sm:text-5xl"
+                    >
                         {post.title}
                     </h1>
                     {post.excerpt && (
@@ -57,43 +88,63 @@ export default function PublicPostShow({ post, related }: Props) {
                         date={post.published_at}
                         size="md"
                         className="justify-center"
+                        readingTime={post.reading_time_minutes}
                     />
                 </header>
 
                 {post.featured_image_url && (
-                    <img
-                        src={post.featured_image_url}
-                        alt={post.featured_image_alt ?? ''}
-                        className="mb-10 aspect-video w-full rounded-xl border object-cover shadow-sm"
-                    />
+                    <div className="mx-auto mb-10 max-w-4xl">
+                        <ExpandableImage
+                            attrs={{
+                                src: post.featured_image_url,
+                                alt: post.featured_image_alt,
+                                caption: post.featured_image_caption,
+                            }}
+                        />
+                    </div>
                 )}
 
-                <RichTextEditor
-                    value={post.body}
-                    readOnly
-                    className="border-0"
-                />
-
-                {post.tags.length > 0 && (
-                    <nav
-                        className="mt-10 flex flex-wrap gap-2"
-                        aria-label="Post tags"
+                <div className="grid gap-8 lg:grid-cols-[minmax(0,48rem)_15rem] lg:items-start lg:justify-center">
+                    <PostTableOfContents items={tableOfContents} />
+                    <article
+                        aria-labelledby="post-title"
+                        className="min-w-0 lg:order-1"
                     >
-                        {post.tags.map((tag) => (
-                            <Badge key={tag.slug} asChild variant="secondary">
-                                <Link href={tagShow(tag.slug)}>
-                                    #{tag.name}
-                                </Link>
-                            </Badge>
-                        ))}
-                    </nav>
-                )}
+                        <PublicRichText
+                            value={post.body}
+                            tableOfContents={tableOfContents}
+                        />
 
-                {post.author && <AuthorCard author={post.author} />}
-            </article>
+                        {post.tags.length > 0 && (
+                            <nav
+                                className="post-tags mt-10 flex flex-wrap gap-2"
+                                aria-label="Post tags"
+                            >
+                                {post.tags.map((tag) => (
+                                    <Badge
+                                        key={tag.slug}
+                                        asChild
+                                        variant="secondary"
+                                    >
+                                        <Link href={tagShow(tag.slug)}>
+                                            #{tag.name}
+                                        </Link>
+                                    </Badge>
+                                ))}
+                            </nav>
+                        )}
+
+                        {(previous || next) && (
+                            <PostNavigation previous={previous} next={next} />
+                        )}
+
+                        {post.author && <AuthorCard author={post.author} />}
+                    </article>
+                </div>
+            </div>
 
             {related.length > 0 && (
-                <section className="mx-auto w-full max-w-6xl border-t px-4 py-12">
+                <section className="related-posts mx-auto w-full max-w-6xl border-t px-4 py-12">
                     <h2 className="mb-8 flex items-center gap-2 text-xs font-medium tracking-widest text-muted-foreground uppercase">
                         <span className="moon-dot" aria-hidden />
                         More in {post.category?.name ?? 'the blog'}
@@ -105,6 +156,54 @@ export default function PublicPostShow({ post, related }: Props) {
     );
 }
 
+function PostNavigation({
+    previous,
+    next,
+}: {
+    previous: PublicPostCard | null;
+    next: PublicPostCard | null;
+}) {
+    return (
+        <nav
+            className="post-navigation mt-12 grid gap-3 border-y py-6 sm:grid-cols-2"
+            aria-label="Post navigation"
+        >
+            {previous ? (
+                <Link
+                    href={postShow(previous.slug)}
+                    className="group grid gap-1 rounded-lg p-3 transition-colors hover:bg-muted"
+                    prefetch
+                >
+                    <span className="flex items-center gap-1 text-xs font-medium tracking-widest text-muted-foreground uppercase">
+                        <ArrowLeft className="size-3.5" aria-hidden />
+                        Previous post
+                    </span>
+                    <span className="font-display font-semibold group-hover:underline group-hover:underline-offset-4">
+                        {previous.title}
+                    </span>
+                </Link>
+            ) : (
+                <span />
+            )}
+            {next && (
+                <Link
+                    href={postShow(next.slug)}
+                    className="group grid gap-1 rounded-lg p-3 text-right transition-colors hover:bg-muted"
+                    prefetch
+                >
+                    <span className="flex items-center justify-end gap-1 text-xs font-medium tracking-widest text-muted-foreground uppercase">
+                        Next post
+                        <ArrowRight className="size-3.5" aria-hidden />
+                    </span>
+                    <span className="font-display font-semibold group-hover:underline group-hover:underline-offset-4">
+                        {next.title}
+                    </span>
+                </Link>
+            )}
+        </nav>
+    );
+}
+
 function AuthorCard({
     author,
 }: {
@@ -113,7 +212,7 @@ function AuthorCard({
     const getInitials = useInitials();
 
     return (
-        <aside className="mt-12 flex flex-wrap items-start gap-4 rounded-xl border bg-muted/30 p-6">
+        <aside className="author-card mt-12 flex flex-wrap items-start gap-4 rounded-xl border bg-muted/30 p-6">
             <Avatar className="size-14 border">
                 <AvatarImage src={author.avatar_url ?? undefined} alt="" />
                 <AvatarFallback>{getInitials(author.name)}</AvatarFallback>
@@ -140,7 +239,7 @@ function AuthorCard({
                     </p>
                 )}
                 {author.social_links && (
-                    <div className="mt-1 flex items-center gap-1">
+                    <div className="author-social-links mt-1 flex items-center gap-1">
                         {socialIcons.map(
                             ({ key, label, icon: Icon }) =>
                                 author.social_links?.[key] && (

@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Actions\Posts\BuildReaderDocument;
 use App\Actions\Posts\RestorePostRevision;
 use App\Http\Requests\PostLockVersionRequest;
 use App\Models\Post;
 use App\Models\PostRevision;
 use App\Models\User;
+use App\Support\RichTextDocument;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
@@ -29,18 +31,23 @@ class PostRevisionController extends Controller
         ]);
     }
 
-    public function show(Post $post, PostRevision $revision): Response
+    public function show(Post $post, PostRevision $revision, BuildReaderDocument $buildReaderDocument): Response
     {
         Gate::authorize('update', $post);
+        $revisionPost = clone $post;
+        $revisionPost->body = $revision->body;
+        $reader = $buildReaderDocument->handle($revisionPost);
 
         return Inertia::render('posts/preview', [
             'post' => [
                 'id' => $post->id,
                 'title' => $revision->title ?? 'Untitled post',
                 'excerpt' => $revision->excerpt,
-                'body' => $revision->body,
+                'body' => $reader['document'],
                 'featured_image_url' => $revision->featured_image_path === null ? null : Storage::disk('public')->url($revision->featured_image_path),
                 'featured_image_alt' => $revision->featured_image_alt,
+                'featured_image_caption' => $revision->featured_image_caption,
+                'reading_time_minutes' => RichTextDocument::readingTime($revision->body),
                 'published_at' => null,
                 'updated_at' => $revision->created_at->toISOString(),
             ],

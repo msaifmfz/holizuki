@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Actions\Posts\RebuildPostMetadata;
 use App\Concerns\ResolvesUniqueSlug;
 use App\Http\Requests\StoreCategoryRequest;
 use App\Http\Requests\UpdateCategoryRequest;
 use App\Models\Category;
+use App\Models\Post;
 use App\Support\PublicCache;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Gate;
@@ -53,8 +55,11 @@ class CategoryController extends Controller
         return to_route('categories.index');
     }
 
-    public function update(UpdateCategoryRequest $request, Category $category): RedirectResponse
-    {
+    public function update(
+        UpdateCategoryRequest $request,
+        Category $category,
+        RebuildPostMetadata $rebuildPostMetadata,
+    ): RedirectResponse {
         $name = $request->string('name')->toString();
 
         $category->update([
@@ -63,17 +68,21 @@ class CategoryController extends Controller
             'description' => $request->filled('description') ? $request->string('description')->toString() : null,
         ]);
 
+        $rebuildPostMetadata->handleQuery(Post::query()->where('category_id', $category->id));
+
         PublicCache::flush();
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Category updated.')]);
 
         return to_route('categories.index');
     }
 
-    public function destroy(Category $category): RedirectResponse
+    public function destroy(Category $category, RebuildPostMetadata $rebuildPostMetadata): RedirectResponse
     {
         Gate::authorize('delete', $category);
 
+        $postIds = Post::query()->where('category_id', $category->id)->pluck('id');
         $category->delete();
+        $rebuildPostMetadata->handleQuery(Post::query()->whereKey($postIds));
 
         PublicCache::flush();
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Category deleted.')]);

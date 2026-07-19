@@ -9,24 +9,45 @@ import { show as postShow } from '@/routes/public/posts';
 import type { Paginated, PublicPostCard } from '@/types';
 
 type Props = {
-    featured: PublicPostCard | null;
+    featured: PublicPostCard[];
+    popular: PublicPostCard[];
     posts: Paginated<PublicPostCard>;
 };
 
-export default function Home({ featured, posts }: Props) {
-    const showHero = featured !== null && posts.current_page === 1;
+export default function Home({ featured, popular, posts }: Props) {
+    const showFeatured = featured.length > 0 && posts.current_page === 1;
 
     return (
         <>
             <Head title="Home" />
             <div className="mx-auto w-full max-w-6xl px-4">
-                {showHero && <FeaturedHero post={featured} />}
+                {showFeatured && (
+                    <section className="border-b py-12 sm:py-16 lg:py-20">
+                        <FeaturedHero post={featured[0]} />
+                        {featured.length > 1 && (
+                            <div className="mt-12 grid gap-8 border-t pt-10 md:grid-cols-2">
+                                {featured.slice(1, 3).map((post) => (
+                                    <FeaturedSupportingPost
+                                        key={post.id}
+                                        post={post}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </section>
+                )}
+
+                {showFeatured && popular.length > 0 && (
+                    <section className="border-b py-12">
+                        <SectionHeading>Popular this month</SectionHeading>
+                        <PostGrid posts={popular} />
+                    </section>
+                )}
 
                 <section className="py-12">
-                    <h2 className="mb-8 flex items-center gap-2 text-xs font-medium tracking-widest text-muted-foreground uppercase">
-                        <span className="moon-dot" aria-hidden />
-                        {showHero ? 'More writing' : 'Latest writing'}
-                    </h2>
+                    <SectionHeading>
+                        {showFeatured ? 'Recent posts' : 'Latest writing'}
+                    </SectionHeading>
 
                     {posts.data.length > 0 ? (
                         <div className="grid gap-10">
@@ -34,7 +55,7 @@ export default function Home({ featured, posts }: Props) {
                             <Pagination paginator={posts} label="Blog pages" />
                         </div>
                     ) : (
-                        !showHero && (
+                        !showFeatured && (
                             <EmptyState
                                 title="Nothing published yet"
                                 description="New writing lands here as soon as it's published. Check back soon."
@@ -49,7 +70,7 @@ export default function Home({ featured, posts }: Props) {
 
 function FeaturedHero({ post }: { post: PublicPostCard }) {
     return (
-        <section className="relative isolate overflow-visible border-b py-12 sm:py-16 lg:py-20">
+        <div className="relative isolate overflow-visible">
             <div
                 aria-hidden
                 className="moon-glow absolute -top-40 -right-24 -z-10 size-[30rem] rounded-full"
@@ -83,6 +104,7 @@ function FeaturedHero({ post }: { post: PublicPostCard }) {
                             author={post.author}
                             date={post.published_at}
                             size="md"
+                            readingTime={post.reading_time_minutes}
                         />
                         <Link
                             href={postShow(post.slug)}
@@ -109,6 +131,48 @@ function FeaturedHero({ post }: { post: PublicPostCard }) {
                     </Link>
                 )}
             </div>
-        </section>
+        </div>
+    );
+}
+
+function FeaturedSupportingPost({ post }: { post: PublicPostCard }) {
+    return (
+        <article className="group relative grid gap-3 sm:grid-cols-[8rem_1fr] sm:items-center">
+            {post.featured_image_url && (
+                <img
+                    src={post.featured_image_url}
+                    alt={post.featured_image_alt ?? ''}
+                    className="aspect-video w-full rounded-xl border object-cover sm:aspect-square"
+                />
+            )}
+            <div className="grid gap-2">
+                <p className="text-xs font-medium tracking-widest text-muted-foreground uppercase">
+                    Featured
+                </p>
+                <h2 className="font-display text-2xl leading-snug font-semibold tracking-tight text-balance">
+                    <Link
+                        href={postShow(post.slug)}
+                        className="group-hover:underline group-hover:underline-offset-4 after:absolute after:inset-0"
+                        prefetch
+                    >
+                        {post.title}
+                    </Link>
+                </h2>
+                <AuthorByline
+                    author={post.author}
+                    date={post.published_at}
+                    readingTime={post.reading_time_minutes}
+                />
+            </div>
+        </article>
+    );
+}
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+    return (
+        <h2 className="mb-8 flex items-center gap-2 text-xs font-medium tracking-widest text-muted-foreground uppercase">
+            <span className="moon-dot" aria-hidden />
+            {children}
+        </h2>
     );
 }

@@ -231,3 +231,51 @@ test('search does not treat wildcard characters as wildcards', function (): void
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page): AssertableInertia => $page->has('posts.data', 0));
 });
+
+test('a manual slug that normalizes into an existing slug fails validation', function (): void {
+    Post::factory()->for($this->user, 'author')->create(['slug' => 'my-post']);
+    $post = Post::factory()->for($this->user, 'author')->create(['lock_version' => 0]);
+
+    $this->actingAs($this->user)
+        ->patchJson(route('posts.autosave', $post), [
+            'title' => 'Another Post',
+            'slug' => 'My-Post',
+            'slug_is_manual' => true,
+            'excerpt' => '',
+            'body' => $this->body,
+            'featured_image_alt' => '',
+            'lock_version' => 0,
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['slug']);
+});
+
+test('fields omitted from an autosave payload are preserved', function (): void {
+    $post = Post::factory()->for($this->user, 'author')->create([
+        'lock_version' => 0,
+        'title' => 'Kept title',
+        'excerpt' => 'Kept excerpt',
+    ]);
+
+    $this->actingAs($this->user)
+        ->patchJson(route('posts.autosave', $post), [
+            'slug' => $post->slug,
+            'slug_is_manual' => true,
+            'lock_version' => 0,
+        ])
+        ->assertOk();
+
+    expect($post->refresh()->title)->toBe('Kept title')
+        ->and($post->excerpt)->toBe('Kept excerpt')
+        ->and($post->body)->not->toBeNull();
+});
+
+test('array query parameters on the post list are ignored', function (): void {
+    $this->actingAs($this->user)
+        ->get(route('posts.index', ['status' => ['x'], 'search' => ['y']]))
+        ->assertOk();
+
+    $this->actingAs($this->user)
+        ->get(route('posts.trash.index', ['search' => ['y']]))
+        ->assertOk();
+});

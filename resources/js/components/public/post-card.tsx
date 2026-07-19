@@ -50,7 +50,11 @@ export default function PostCard({ post }: { post: PublicPostCard }) {
                 </p>
             )}
 
-            <AuthorByline author={post.author} date={post.published_at} />
+            <AuthorByline
+                author={post.author}
+                date={post.published_at}
+                readingTime={post.reading_time_minutes}
+            />
         </article>
     );
 }

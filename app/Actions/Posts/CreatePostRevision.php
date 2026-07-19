@@ -31,6 +31,14 @@ class CreatePostRevision
             'body' => $post->body,
             'featured_image_path' => $post->featured_image_path,
             'featured_image_alt' => $post->featured_image_alt,
+            'featured_image_caption' => $post->featured_image_caption,
+            'seo_title' => $post->seo_title,
+            'meta_description' => $post->meta_description,
+            'canonical_url' => $post->canonical_url,
+            'og_title' => $post->og_title,
+            'og_description' => $post->og_description,
+            'og_image_path' => $post->og_image_path,
+            'noindex' => $post->noindex,
         ]);
 
         $this->prune($post, $revision->revision_number);

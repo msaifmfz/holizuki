@@ -24,6 +24,8 @@ export type PublicPostCard = {
     excerpt: string | null;
     featured_image_url: string | null;
     featured_image_alt: string | null;
+    featured_image_caption: string | null;
+    reading_time_minutes: number;
     published_at: string | null;
     category: PublicTaxonomyRef | null;
     author: PublicAuthorRef | null;
@@ -32,8 +34,33 @@ export type PublicPostCard = {
 export type PublicPostDetail = Omit<PublicPostCard, 'author'> & {
     body: RichTextDocument | null;
     updated_at: string | null;
+    seo_title: string | null;
     tags: PublicTaxonomyRef[];
     author: PublicAuthorProfile | null;
+};
+
+export type TableOfContentsItem = {
+    id: string;
+    title: string;
+    level: 2 | 3;
+};
+
+type PublicArchiveMonth = {
+    month: number;
+    label: string;
+    posts_count: number;
+};
+
+export type PublicArchiveYear = {
+    year: number;
+    months: PublicArchiveMonth[];
+    posts_count: number;
+};
+
+export type PublicArchivePeriod = {
+    year: number | null;
+    month: number | null;
+    label: string;
 };
 
 export type PublicCategory = {

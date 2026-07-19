@@ -25,6 +25,7 @@ import { errorText } from '@/lib/post-editor';
 type ImageResponse = {
     featured_image_url: string | null;
     featured_image_alt: string | null;
+    featured_image_caption: string | null;
     lock_version: number;
     updated_at: string;
 };
@@ -34,8 +35,10 @@ type Props = {
     lockVersion: number;
     imageUrl: string | null;
     altText: string | null;
+    caption: string | null;
     onChange: (response: ImageResponse) => void;
     onAltTextChange: (value: string) => void;
+    onCaptionChange: (value: string) => void;
     canRemove: boolean;
 };
 
@@ -44,8 +47,10 @@ export default function FeaturedImageUploader({
     lockVersion,
     imageUrl,
     altText,
+    caption,
     onChange,
     onAltTextChange,
+    onCaptionChange,
     canRemove,
 }: Props) {
     const inputRef = useRef<HTMLInputElement>(null);
@@ -167,6 +172,18 @@ export default function FeaturedImageUploader({
                             onChange={(event) =>
                                 onAltTextChange(event.target.value)
                             }
+                        />
+                        <Label htmlFor="current-featured-caption">
+                            Caption (optional)
+                        </Label>
+                        <Input
+                            id="current-featured-caption"
+                            value={caption ?? ''}
+                            maxLength={500}
+                            onChange={(event) =>
+                                onCaptionChange(event.target.value)
+                            }
+                            placeholder="Context shown beneath the image"
                         />
                     </div>
                 </>

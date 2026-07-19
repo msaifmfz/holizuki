@@ -17,8 +17,10 @@ test('the homepage shows only published posts with the newest as featured', func
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page): AssertableInertia => $page
             ->component('public/home')
-            ->where('featured.id', $newest->id)
-            ->where('featured.title', 'Newest article')
+            ->has('featured', 1)
+            ->where('featured.0.id', $newest->id)
+            ->where('featured.0.title', 'Newest article')
+            ->has('popular', 0)
             ->has('posts.data', 1)
             ->where('posts.data.0.id', $older->id)
             ->has('seo.title')
@@ -33,7 +35,8 @@ test('the homepage renders an empty state when nothing is published', function (
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page): AssertableInertia => $page
             ->component('public/home')
-            ->where('featured', null)
+            ->has('featured', 0)
+            ->has('popular', 0)
             ->has('posts.data', 0));
 });
 
@@ -47,7 +50,7 @@ test('a published post renders with taxonomy, author, and related posts', functi
     $post->tags()->attach(Tag::factory()->create(['name' => 'Laravel', 'slug' => 'laravel']));
 
     $related = Post::factory()->published()->create(['category_id' => $category->id]);
-    Post::factory()->published()->create();
+    $fallback = Post::factory()->published()->create();
 
     $this->get(route('public.posts.show', $post->slug))
         ->assertOk()
@@ -58,8 +61,9 @@ test('a published post renders with taxonomy, author, and related posts', functi
             ->where('post.tags.0.slug', 'laravel')
             ->where('post.author.name', 'Jane Writer')
             ->has('post.body')
-            ->has('related', 1)
+            ->has('related', 2)
             ->where('related.0.id', $related->id)
+            ->where('related.1.id', $fallback->id)
             ->where('seo.type', 'article')
             ->where('seo.canonical', route('public.posts.show', $post->slug))
             ->has('seo.json_ld'));

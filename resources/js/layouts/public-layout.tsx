@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { PropsWithChildren } from 'react';
 import AppLogoIcon from '@/components/app-logo-icon';
 import AppearanceToggle from '@/components/appearance-toggle';
+import { Breadcrumbs } from '@/components/breadcrumbs';
 import { Button } from '@/components/ui/button';
 import {
     Sheet,
@@ -12,24 +13,54 @@ import {
     SheetTitle,
     SheetTrigger,
 } from '@/components/ui/sheet';
+import { useCurrentUrl } from '@/hooks/use-current-url';
+import { cn } from '@/lib/utils';
 import { dashboard, home, login } from '@/routes';
-import { about, search as searchRoute, privacy, terms } from '@/routes/public';
+import {
+    about,
+    archive,
+    feed,
+    privacy,
+    search as searchRoute,
+    terms,
+    topics,
+} from '@/routes/public';
 import { show as categoryShow } from '@/routes/public/categories';
 import { create as contact } from '@/routes/public/contact';
+import type { BreadcrumbItem } from '@/types';
 
 const navLinks = [
-    { title: 'Home', href: home },
-    { title: 'About', href: about },
-    { title: 'Contact', href: contact },
+    { title: 'Home', href: home, descendants: false },
+    { title: 'Topics', href: topics, descendants: true },
+    { title: 'Archive', href: archive, descendants: true },
+    { title: 'About', href: about, descendants: false },
 ];
 
 export default function PublicLayout({ children }: PropsWithChildren) {
     const { auth, footerCategories, name } = usePage().props;
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
+    const { isCurrentUrl, isCurrentOrParentUrl } = useCurrentUrl();
+
+    const isActive = (link: (typeof navLinks)[number]) =>
+        link.title === 'Topics'
+            ? ['/topics', '/categories/', '/tags/'].some((path) =>
+                  path.endsWith('/')
+                      ? isCurrentOrParentUrl(path)
+                      : isCurrentUrl(path),
+              )
+            : link.descendants
+              ? isCurrentOrParentUrl(link.href())
+              : isCurrentUrl(link.href());
 
     return (
         <div className="flex min-h-screen flex-col">
-            <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur">
+            <a
+                href="#main-content"
+                className="fixed top-2 left-2 z-[100] -translate-y-20 rounded-md bg-background px-4 py-2 text-sm font-medium shadow-lg ring-1 ring-border transition-transform focus:translate-y-0"
+            >
+                Skip to content
+            </a>
+            <header className="site-header sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur">
                 <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-3 px-4">
                     <Link
                         href={home()}
@@ -53,10 +84,16 @@ export default function PublicLayout({ children }: PropsWithChildren) {
                             <Button
                                 key={link.title}
                                 asChild
-                                variant="ghost"
+                                variant={isActive(link) ? 'secondary' : 'ghost'}
                                 size="sm"
                             >
-                                <Link href={link.href()} prefetch>
+                                <Link
+                                    href={link.href()}
+                                    prefetch
+                                    aria-current={
+                                        isActive(link) ? 'page' : undefined
+                                    }
+                                >
                                     {link.title}
                                 </Link>
                             </Button>
@@ -113,13 +150,24 @@ export default function PublicLayout({ children }: PropsWithChildren) {
                                         <Button
                                             key={link.title}
                                             asChild
-                                            variant="ghost"
+                                            variant={
+                                                isActive(link)
+                                                    ? 'secondary'
+                                                    : 'ghost'
+                                            }
                                             className="justify-start"
                                             onClick={() =>
                                                 setMobileNavOpen(false)
                                             }
                                         >
-                                            <Link href={link.href()}>
+                                            <Link
+                                                href={link.href()}
+                                                aria-current={
+                                                    isActive(link)
+                                                        ? 'page'
+                                                        : undefined
+                                                }
+                                            >
                                                 {link.title}
                                             </Link>
                                         </Button>
@@ -149,9 +197,12 @@ export default function PublicLayout({ children }: PropsWithChildren) {
                 </div>
             </header>
 
-            <main className="flex-1">{children}</main>
+            <main id="main-content" tabIndex={-1} className="flex-1">
+                <PublicBreadcrumbTrail />
+                {children}
+            </main>
 
-            <footer className="mt-16 border-t">
+            <footer className="site-footer mt-16 border-t">
                 <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-12 md:grid-cols-3">
                     <div className="grid content-start gap-3">
                         <div className="flex items-center gap-2">
@@ -189,6 +240,24 @@ export default function PublicLayout({ children }: PropsWithChildren) {
                     <nav className="grid content-start gap-2" aria-label="Site">
                         <h2 className="text-sm font-semibold">Explore</h2>
                         <Link
+                            href={topics()}
+                            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                        >
+                            All topics
+                        </Link>
+                        <Link
+                            href={archive()}
+                            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                        >
+                            Archive
+                        </Link>
+                        <Link
+                            href={searchRoute()}
+                            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                        >
+                            Search
+                        </Link>
+                        <Link
                             href={about()}
                             className="text-sm text-muted-foreground transition-colors hover:text-foreground"
                         >
@@ -221,7 +290,7 @@ export default function PublicLayout({ children }: PropsWithChildren) {
                             reserved.
                         </p>
                         <a
-                            href="/feed"
+                            href={feed.url()}
                             className="flex items-center gap-1 transition-colors hover:text-foreground"
                         >
                             <Rss className="size-3.5" />
@@ -230,6 +299,88 @@ export default function PublicLayout({ children }: PropsWithChildren) {
                     </div>
                 </div>
             </footer>
+        </div>
+    );
+}
+
+function PublicBreadcrumbTrail() {
+    const page = usePage();
+    const pathname = new URL(page.url, 'http://localhost').pathname;
+
+    if (pathname === '/') {
+        return null;
+    }
+
+    const props = page.props as Record<string, unknown>;
+    const post = props.post as
+        | {
+              title?: string;
+              category?: { name?: string; slug?: string } | null;
+          }
+        | undefined;
+    const category = props.category as { name?: string } | undefined;
+    const tag = props.tag as { name?: string } | undefined;
+    const author = props.author as { name?: string } | undefined;
+    const period = props.period as { label?: string } | undefined;
+    const items: BreadcrumbItem[] = [{ title: 'Home', href: home() }];
+
+    if (pathname.startsWith('/categories/')) {
+        items.push({ title: 'Topics', href: topics() });
+        items.push({ title: category?.name ?? 'Category', href: page.url });
+    } else if (pathname.startsWith('/tags/')) {
+        items.push({ title: 'Topics', href: topics() });
+        items.push({
+            title: tag?.name ? `#${tag.name}` : 'Tag',
+            href: page.url,
+        });
+    } else if (pathname.startsWith('/authors/')) {
+        items.push({ title: author?.name ?? 'Author', href: page.url });
+    } else if (pathname.startsWith('/posts/')) {
+        if (post?.category?.name && post.category.slug) {
+            items.push({ title: 'Topics', href: topics() });
+            items.push({
+                title: post.category.name,
+                href: categoryShow(post.category.slug),
+            });
+        }
+
+        items.push({ title: post?.title ?? 'Post', href: page.url });
+    } else if (pathname.startsWith('/archive')) {
+        items.push({
+            title: 'Archive',
+            href: pathname === archive.url() ? page.url : archive(),
+        });
+
+        if (pathname !== archive.url()) {
+            items.push({
+                title: period?.label ?? 'All posts',
+                href: page.url,
+            });
+        }
+    } else {
+        const labels: Record<string, string> = {
+            '/about': 'About',
+            '/contact': 'Contact',
+            '/privacy': 'Privacy Policy',
+            '/search': 'Search',
+            '/terms': 'Terms of Use',
+            '/topics': 'Topics',
+        };
+
+        items.push({
+            title: labels[pathname] ?? 'Page',
+            href: page.url,
+        });
+    }
+
+    return (
+        <div
+            className={cn(
+                'public-breadcrumbs mx-auto w-full max-w-6xl px-4 pt-5',
+                pathname === '/error' && 'hidden',
+            )}
+        >
+            <Breadcrumbs breadcrumbs={items} />
         </div>
     );
 }

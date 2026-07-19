@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Actions\Posts\BuildReaderDocument;
 use App\Actions\Posts\PublishPost;
 use App\Actions\Posts\SchedulePost;
 use App\Actions\Posts\UnpublishPost;
@@ -11,6 +12,7 @@ use App\Http\Requests\PostLockVersionRequest;
 use App\Http\Requests\PublishPostRequest;
 use App\Http\Requests\SchedulePostRequest;
 use App\Models\Post;
+use App\Support\RichTextDocument;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Gate;
@@ -20,12 +22,12 @@ use Inertia\Response;
 
 class PostPublishingController extends Controller
 {
-    public function preview(Post $post): Response
+    public function preview(Post $post, BuildReaderDocument $buildReaderDocument): Response
     {
         Gate::authorize('view', $post);
 
         return Inertia::render('posts/preview', [
-            'post' => $this->previewData($post),
+            'post' => $this->previewData($post, $buildReaderDocument),
             'revision' => null,
         ]);
     }
@@ -70,15 +72,19 @@ class PostPublishingController extends Controller
     }
 
     /** @return array<string, mixed> */
-    private function previewData(Post $post): array
+    private function previewData(Post $post, BuildReaderDocument $buildReaderDocument): array
     {
+        $reader = $buildReaderDocument->handle($post);
+
         return [
             'id' => $post->id,
             'title' => $post->title ?? 'Untitled post',
             'excerpt' => $post->excerpt,
-            'body' => $post->body,
+            'body' => $reader['document'],
             'featured_image_url' => $post->featured_image_path === null ? null : Storage::disk('public')->url($post->featured_image_path),
             'featured_image_alt' => $post->featured_image_alt,
+            'featured_image_caption' => $post->featured_image_caption,
+            'reading_time_minutes' => RichTextDocument::readingTime($post->body),
             'published_at' => $post->published_at?->toISOString(),
             'updated_at' => $post->updated_at?->toISOString(),
         ];

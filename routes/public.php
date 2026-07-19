@@ -1,14 +1,18 @@
 <?php
 
+use App\Http\Controllers\Public\ArchiveController;
 use App\Http\Controllers\Public\AuthorPageController;
 use App\Http\Controllers\Public\CategoryPageController;
 use App\Http\Controllers\Public\ContactController;
 use App\Http\Controllers\Public\FeedController;
 use App\Http\Controllers\Public\HomeController;
 use App\Http\Controllers\Public\PostViewController;
+use App\Http\Controllers\Public\PostViewEventController;
+use App\Http\Controllers\Public\RobotsTxtController;
 use App\Http\Controllers\Public\SearchController;
 use App\Http\Controllers\Public\SitemapController;
 use App\Http\Controllers\Public\TagPageController;
+use App\Http\Controllers\Public\TopicController;
 use App\Support\Seo;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -17,6 +21,13 @@ use Inertia\Response;
 Route::get('/', [HomeController::class, 'index'])->name('home');
 
 Route::get('posts/{slug}', [PostViewController::class, 'show'])->name('public.posts.show');
+Route::post('posts/{post:slug}/views', PostViewEventController::class)
+    ->middleware('throttle:post-views')
+    ->name('public.posts.views.store');
+Route::get('topics', TopicController::class)->name('public.topics');
+Route::get('archive/{year?}/{month?}', ArchiveController::class)
+    ->where(['year' => '[0-9]{4}', 'month' => '(?:0[1-9]|1[0-2])'])
+    ->name('public.archive');
 Route::get('categories/{category:slug}', [CategoryPageController::class, 'show'])->name('public.categories.show');
 Route::get('tags/{tag:slug}', [TagPageController::class, 'show'])->name('public.tags.show');
 Route::get('authors/{user:author_slug}', [AuthorPageController::class, 'show'])->name('public.authors.show');
@@ -41,3 +52,4 @@ Route::post('contact', [ContactController::class, 'store'])
 
 Route::get('sitemap.xml', SitemapController::class)->name('public.sitemap');
 Route::get('feed', FeedController::class)->name('public.feed');
+Route::get('robots.txt', RobotsTxtController::class)->name('public.robots');

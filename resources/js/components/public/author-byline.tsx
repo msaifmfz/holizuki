@@ -11,6 +11,7 @@ type Props = {
     date: string | null;
     size?: 'sm' | 'md';
     className?: string;
+    readingTime?: number;
 };
 
 export default function AuthorByline({
@@ -18,6 +19,7 @@ export default function AuthorByline({
     date,
     size = 'sm',
     className,
+    readingTime,
 }: Props) {
     const getInitials = useInitials();
 
@@ -56,6 +58,12 @@ export default function AuthorByline({
             )}
             {author && date && <span aria-hidden>·</span>}
             {date && <time dateTime={date}>{formatDate(date, 'long')}</time>}
+            {readingTime !== undefined && (
+                <>
+                    {(author || date) && <span aria-hidden>·</span>}
+                    <span>{readingTime} min read</span>
+                </>
+            )}
         </div>
     );
 }
