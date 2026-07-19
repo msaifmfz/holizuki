@@ -92,6 +92,9 @@ class AppServiceProvider extends ServiceProvider
     {
         RateLimiter::for('contact', static fn (Request $request): Limit => Limit::perHour(5)->by((string) $request->ip()));
         RateLimiter::for('post-views', static fn (Request $request): Limit => Limit::perMinute(30)->by(ReaderIdentity::limiterKey($request)));
+        RateLimiter::for('newsletter', static fn (Request $request): Limit => Limit::perHour(5)->by((string) $request->ip()));
+        RateLimiter::for('comments', static fn (Request $request): Limit => Limit::perHour(5)->by((string) ($request->user()->id ?? $request->ip())));
+        RateLimiter::for('analytics-realtime', static fn (Request $request): Limit => Limit::perMinute(10)->by((string) ($request->user()->id ?? $request->ip())));
     }
 
     /**

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Http\Public\Controllers;
 
+use App\Domain\Community\Enums\CommentStatus;
+use App\Domain\Community\Models\Comment;
+use App\Domain\Identity\Models\User;
 use App\Domain\Publishing\Enums\PostStatus;
 use App\Domain\Publishing\Models\Post;
 use App\Domain\Publishing\Models\PostRedirect;
@@ -60,6 +63,8 @@ class PostViewController extends Controller
                 'featured_image_alt' => $post->featured_image_alt,
                 'featured_image_caption' => $post->featured_image_caption,
                 'reading_time_minutes' => $post->reading_time_minutes ?? 1,
+                'word_count' => $post->word_count,
+                'word_count_band' => $post->word_count_band->value,
                 'published_at' => $post->published_at?->toISOString(),
                 'updated_at' => ($post->content_updated_at ?? $post->published_at)?->toISOString(),
                 'category' => $post->category === null ? null : [
@@ -76,6 +81,15 @@ class PostViewController extends Controller
             'previous' => $previous instanceof Post ? $this->postCards->card($previous) : null,
             'next' => $next instanceof Post ? $this->postCards->card($next) : null,
             'table_of_contents' => count($reader['table_of_contents']) >= 3 ? $reader['table_of_contents'] : [],
+            'comments' => Inertia::scroll(fn () => Comment::query()
+                ->whereBelongsTo($post)
+                ->where('status', CommentStatus::Approved)
+                ->with('reader:id,name,role')
+                ->oldest('submitted_at')
+                ->orderBy('id')
+                ->paginate(perPage: 20, pageName: 'comments_page')
+                ->through(fn (Comment $comment): array => $this->commentData($comment))),
+            'myComments' => fn (): array => $this->privateComments($post),
             'seo' => Seo::forPost($post, $imageUrl, Seo::articleGraph($post, $imageUrl)),
         ]);
     }
@@ -171,5 +185,48 @@ class PostViewController extends Controller
             ->oldest('published_at')
             ->orderBy('id')
             ->first();
+    }
+
+    /** @return array<string, mixed> */
+    private function commentData(Comment $comment): array
+    {
+        $user = request()->user();
+
+        return [
+            'id' => $comment->id,
+            'body' => $comment->displayBody(),
+            'display_name' => $comment->reader->name ?? 'Reader',
+            'is_author' => $comment->reader?->isAdministrator() === true,
+            'submitted_at' => $comment->submitted_at->toISOString(),
+            'can_edit' => $user instanceof User && $comment->isEditableBy($user),
+        ];
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function privateComments(Post $post): array
+    {
+        $user = request()->user();
+
+        if (! $user instanceof User || ! $user->isReader()) {
+            return [];
+        }
+
+        return array_values(Comment::query()
+            ->whereBelongsTo($post)
+            ->where('user_id', $user->id)
+            ->whereIn('status', [CommentStatus::Pending, CommentStatus::Rejected])
+            ->latest('submitted_at')
+            ->limit(10)
+            ->get()
+            ->map(fn (Comment $comment): array => [
+                'id' => $comment->id,
+                'body' => $comment->displayBody(),
+                'status' => $comment->status->value,
+                'reason' => $comment->moderation_reason,
+                'submitted_at' => $comment->submitted_at->toISOString(),
+                'can_edit' => $comment->isEditableBy($user),
+            ])
+            ->values()
+            ->all());
     }
 }

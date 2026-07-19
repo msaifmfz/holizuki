@@ -12,7 +12,10 @@ abstract class TestCase extends BaseTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->withoutVite();
+
+        if (! method_exists($this, 'visit')) {
+            $this->withoutVite();
+        }
     }
 
     protected function skipUnlessFortifyHas(string $feature, ?string $message = null): void

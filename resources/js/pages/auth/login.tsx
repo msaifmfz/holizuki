@@ -8,15 +8,17 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+import { register } from '@/routes';
 import { store } from '@/routes/login';
 import { request } from '@/routes/password';
 
 type Props = {
     status?: string;
     canResetPassword: boolean;
+    returnTo?: string | null;
 };
 
-export default function Login({ status, canResetPassword }: Props) {
+export default function Login({ status, canResetPassword, returnTo }: Props) {
     return (
         <>
             <Head title="Log in" />
@@ -30,6 +32,13 @@ export default function Login({ status, canResetPassword }: Props) {
             >
                 {({ processing, errors }) => (
                     <>
+                        {returnTo && (
+                            <input
+                                type="hidden"
+                                name="return_to"
+                                value={returnTo}
+                            />
+                        )}
                         <div className="grid gap-6">
                             <div className="grid gap-2">
                                 <Label htmlFor="email">Email address</Label>
@@ -90,6 +99,13 @@ export default function Login({ status, canResetPassword }: Props) {
                     {status}
                 </div>
             )}
+
+            <p className="text-center text-sm text-muted-foreground">
+                New here?{' '}
+                <TextLink href={register({ query: { return_to: returnTo } })}>
+                    Create a reader account
+                </TextLink>
+            </p>
         </>
     );
 }

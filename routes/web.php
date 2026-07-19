@@ -1,5 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
+use App\Http\Admin\Controllers\AnalyticsDashboardController;
+use App\Http\Admin\Controllers\AnalyticsInsightController;
+use App\Http\Admin\Controllers\AnalyticsRealtimeController;
+use App\Http\Admin\Controllers\AnalyticsSettingsController;
 use App\Http\Admin\Controllers\CategoryController;
 use App\Http\Admin\Controllers\ContactSubmissionController;
 use App\Http\Admin\Controllers\PostAutosaveController;
@@ -11,13 +17,27 @@ use App\Http\Admin\Controllers\PostOgImageController;
 use App\Http\Admin\Controllers\PostPublishingController;
 use App\Http\Admin\Controllers\PostRevisionController;
 use App\Http\Admin\Controllers\PostTrashController;
+use App\Http\Admin\Controllers\PublishingGoalController;
 use App\Http\Admin\Controllers\TagController;
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
-use Inertia\Response;
 
-Route::middleware(['auth', 'verified'])->group(function (): void {
-    Route::get('dashboard', fn (): Response => Inertia::render('dashboard'))->name('dashboard');
+Route::middleware(['auth', 'verified', 'access-author-portal'])->group(function (): void {
+    Route::get('dashboard', [AnalyticsDashboardController::class, 'index'])->name('dashboard');
+    Route::get('dashboard/posts', [AnalyticsDashboardController::class, 'posts'])->name('dashboard.posts.index');
+    Route::get('dashboard/posts/{post}', [AnalyticsDashboardController::class, 'post'])->name('dashboard.posts.show');
+    Route::get('dashboard/audience', [AnalyticsDashboardController::class, 'audience'])->name('dashboard.audience');
+    Route::get('dashboard/goals', [AnalyticsDashboardController::class, 'goals'])->name('dashboard.goals');
+    Route::post('dashboard/goals', [PublishingGoalController::class, 'store'])->name('dashboard.goals.store');
+    Route::delete('dashboard/goals', [PublishingGoalController::class, 'destroy'])->name('dashboard.goals.destroy');
+    Route::post('dashboard/goals/periods/{period}/pause', [PublishingGoalController::class, 'pause'])->name('dashboard.goals.pause');
+    Route::post('dashboard/goals/periods/{period}/resume', [PublishingGoalController::class, 'resume'])->name('dashboard.goals.resume');
+    Route::get('dashboard/achievements', [AnalyticsDashboardController::class, 'achievements'])->name('dashboard.achievements');
+    Route::patch('dashboard/insights/{insight}', [AnalyticsInsightController::class, 'update'])->name('dashboard.insights.update');
+    Route::get('dashboard/analytics/settings', [AnalyticsSettingsController::class, 'edit'])->name('dashboard.analytics.settings.edit');
+    Route::patch('dashboard/analytics/settings', [AnalyticsSettingsController::class, 'update'])->name('dashboard.analytics.settings.update');
+    Route::get('dashboard/analytics/realtime', AnalyticsRealtimeController::class)->middleware('throttle:analytics-realtime')->name('dashboard.analytics.realtime');
+    Route::post('dashboard/analytics/snapshots', [AnalyticsDashboardController::class, 'requestSnapshot'])->name('dashboard.analytics.snapshots.store');
+    Route::get('dashboard/analytics/snapshots/{preparation}', [AnalyticsDashboardController::class, 'snapshotStatus'])->name('dashboard.analytics.snapshots.show');
 
     Route::get('posts/trash', [PostTrashController::class, 'index'])->name('posts.trash.index');
     Route::post('posts/{post}/restore', [PostTrashController::class, 'restore'])->withTrashed()->name('posts.restore');
@@ -51,4 +71,5 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
 });
 
 require __DIR__.'/settings.php';
+require __DIR__.'/community.php';
 require __DIR__.'/public.php';

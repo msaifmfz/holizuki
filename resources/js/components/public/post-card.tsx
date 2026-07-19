@@ -4,7 +4,15 @@ import { show as categoryShow } from '@/routes/public/categories';
 import { show as postShow } from '@/routes/public/posts';
 import type { PublicPostCard } from '@/types';
 
-export default function PostCard({ post }: { post: PublicPostCard }) {
+export default function PostCard({
+    post,
+    contentSource,
+    contentLocation,
+}: {
+    post: PublicPostCard;
+    contentSource?: string;
+    contentLocation?: string;
+}) {
     return (
         <article className="group relative flex flex-col gap-3">
             {post.featured_image_url ? (
@@ -37,6 +45,9 @@ export default function PostCard({ post }: { post: PublicPostCard }) {
             <h3 className="font-display text-xl leading-snug font-semibold tracking-tight text-balance">
                 <Link
                     href={postShow(post.slug)}
+                    data-content-key={`post:${post.id}`}
+                    data-content-source={contentSource}
+                    data-content-location={contentLocation}
                     className="group-hover:underline group-hover:underline-offset-4 after:absolute after:inset-0"
                     prefetch
                 >

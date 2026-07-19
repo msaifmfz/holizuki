@@ -26,21 +26,23 @@ arch('the support kernel is dependency-free')
 
 arch('identity is a leaf context')
     ->expect('App\Domain\Identity')
-    ->not->toUse(['App\Domain\Publishing', 'App\Domain\Taxonomy', 'App\Domain\Reading', 'App\Domain\Inbox']);
+    ->not->toUse(['App\Domain\Publishing', 'App\Domain\Taxonomy', 'App\Domain\Reading', 'App\Domain\Inbox', 'App\Domain\Community', 'App\Domain\Analytics']);
 
 arch('inbox depends on identity models at most')
     ->expect('App\Domain\Inbox')
-    ->not->toUse(['App\Domain\Publishing', 'App\Domain\Taxonomy', 'App\Domain\Reading']);
+    ->not->toUse(['App\Domain\Publishing', 'App\Domain\Taxonomy', 'App\Domain\Reading', 'App\Domain\Community', 'App\Domain\Analytics']);
 
 arch('publishing never reaches into reading or inbox')
     ->expect('App\Domain\Publishing')
-    ->not->toUse(['App\Domain\Reading', 'App\Domain\Inbox']);
+    ->not->toUse(['App\Domain\Reading', 'App\Domain\Inbox', 'App\Domain\Community', 'App\Domain\Analytics']);
 
 arch('taxonomy touches publishing only through its models')
     ->expect('App\Domain\Taxonomy')
     ->not->toUse([
         'App\Domain\Reading',
         'App\Domain\Inbox',
+        'App\Domain\Community',
+        'App\Domain\Analytics',
         'App\Domain\Publishing\Actions',
         'App\Domain\Publishing\Casts',
         'App\Domain\Publishing\Concerns',
@@ -58,11 +60,40 @@ arch('taxonomy touches publishing only through its models')
 
 arch('reading never depends on inbox')
     ->expect('App\Domain\Reading')
-    ->not->toUse('App\Domain\Inbox');
+    ->not->toUse(['App\Domain\Inbox', 'App\Domain\Community', 'App\Domain\Analytics']);
+
+arch('community depends only on publishing and identity contexts')
+    ->expect('App\Domain\Community')
+    ->not->toUse(['App\Domain\Analytics', 'App\Domain\Reading', 'App\Domain\Taxonomy', 'App\Domain\Inbox']);
+
+arch('analytics does not call actions from other contexts')
+    ->expect('App\Domain\Analytics')
+    ->not->toUse([
+        'App\Domain\Publishing\Actions',
+        'App\Domain\Taxonomy\Actions',
+        'App\Domain\Identity\Actions',
+        'App\Domain\Community\Actions',
+        'App\Domain\Reading\Actions',
+    ]);
+
+arch('analytics observes community only through immutable events')
+    ->expect('App\Domain\Analytics')
+    ->not->toUse([
+        'App\Domain\Community\Actions',
+        'App\Domain\Community\Console',
+        'App\Domain\Community\Enums',
+        'App\Domain\Community\Mail',
+        'App\Domain\Community\Models',
+        'App\Domain\Community\Policies',
+        'App\Domain\Community\Providers',
+        'App\Domain\Community\Support',
+        'App\Domain\Community\ValueObjects',
+    ]);
 
 arch('domain events are immutable')
     ->expect('App\Domain\Publishing\Events')
     ->toBeFinal()->toBeReadonly()
     ->and('App\Domain\Taxonomy\Events')->toBeFinal()->toBeReadonly()
     ->and('App\Domain\Identity\Events')->toBeFinal()->toBeReadonly()
-    ->and('App\Domain\Inbox\Events')->toBeFinal()->toBeReadonly();
+    ->and('App\Domain\Inbox\Events')->toBeFinal()->toBeReadonly()
+    ->and('App\Domain\Community\Events')->toBeFinal()->toBeReadonly();

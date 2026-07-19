@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Publishing\Enums\WordCountBand;
 use App\Domain\Publishing\Models\Post;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia;
@@ -22,9 +23,28 @@ test('reader metadata is derived whenever post content changes', function (): vo
     ]);
 
     expect($post->refresh()->reading_time_minutes)->toBe(2)
+        ->and($post->word_count)->toBe(226)
+        ->and($post->word_count_band)->toBe(WordCountBand::Under500)
         ->and($post->search_text)->toContain('Reader metadata')
         ->and($post->search_text)->toContain('MetadataNeedle');
 });
+
+test('word-count bands use stable exact boundaries', function (
+    int $wordCount,
+    WordCountBand $expected,
+): void {
+    expect(WordCountBand::forWordCount($wordCount))->toBe($expected);
+})->with([
+    'zero' => [0, WordCountBand::Under500],
+    '499' => [499, WordCountBand::Under500],
+    '500' => [500, WordCountBand::From500To999],
+    '999' => [999, WordCountBand::From500To999],
+    '1000' => [1000, WordCountBand::From1000To1499],
+    '1499' => [1499, WordCountBand::From1000To1499],
+    '1500' => [1500, WordCountBand::From1500To2499],
+    '2499' => [2499, WordCountBand::From1500To2499],
+    '2500' => [2500, WordCountBand::From2500],
+]);
 
 test('metadata rebuild supports missing-only and full modes', function (): void {
     $missing = Post::factory()->create();
@@ -32,18 +52,22 @@ test('metadata rebuild supports missing-only and full modes', function (): void 
 
     DB::table('posts')->where('id', $missing->id)->update([
         'reading_time_minutes' => null,
+        'word_count' => 0,
         'search_text' => null,
     ]);
     DB::table('posts')->where('id', $existing->id)->update([
         'reading_time_minutes' => 99,
+        'word_count' => 999,
         'search_text' => 'keep-me',
     ]);
 
     $this->artisan('posts:rebuild-metadata', ['--missing' => true])->assertSuccessful();
 
     expect($missing->refresh()->reading_time_minutes)->not->toBeNull()
+        ->and($missing->word_count)->toBeGreaterThan(0)
         ->and($missing->search_text)->not->toBeNull()
         ->and($existing->refresh()->reading_time_minutes)->toBe(99)
+        ->and($existing->word_count)->toBe(999)
         ->and($existing->search_text)->toBe('keep-me');
 
     $this->artisan('posts:rebuild-metadata')->assertSuccessful();

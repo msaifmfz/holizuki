@@ -78,7 +78,11 @@ export default function SearchPage({ query, posts }: Props) {
                     />
                 ) : posts.data.length > 0 ? (
                     <>
-                        <PostGrid posts={posts.data} />
+                        <PostGrid
+                            posts={posts.data}
+                            contentSource="search"
+                            contentLocation="results"
+                        />
                         <Pagination paginator={posts} label="Search results" />
                     </>
                 ) : (

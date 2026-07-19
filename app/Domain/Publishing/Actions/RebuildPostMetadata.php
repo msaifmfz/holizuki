@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Publishing\Actions;
 
+use App\Domain\Publishing\Enums\WordCountBand;
 use App\Domain\Publishing\Models\Post;
 use App\Domain\Taxonomy\Models\Tag;
 use Illuminate\Database\Eloquent\Builder;
@@ -26,12 +27,16 @@ class RebuildPostMetadata
             $post->body?->plainText() ?? '',
         ]))->squish()->toString();
 
+        $wordCount = $post->body?->wordCount() ?? 0;
+
         $post->forceFill([
             'reading_time_minutes' => $post->body?->readingTime() ?? 1,
+            'word_count' => $wordCount,
+            'word_count_band' => WordCountBand::forWordCount($wordCount),
             'search_text' => $searchText,
         ]);
 
-        if ($post->isDirty(['reading_time_minutes', 'search_text'])) {
+        if ($post->isDirty(['reading_time_minutes', 'word_count', 'word_count_band', 'search_text'])) {
             Post::withoutTimestamps(fn (): bool => $post->saveQuietly());
         }
 

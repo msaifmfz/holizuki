@@ -26,7 +26,11 @@ export default function AuthorShow({ author, posts }: Props) {
                 />
                 {posts.data.length > 0 ? (
                     <>
-                        <PostGrid posts={posts.data} />
+                        <PostGrid
+                            posts={posts.data}
+                            contentSource="recommendation"
+                            contentLocation="author_archive"
+                        />
                         <Pagination
                             paginator={posts}
                             label={`Posts by ${author.name}`}

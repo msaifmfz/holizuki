@@ -1,4 +1,4 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import {
     ArrowLeft,
     ArrowRight,
@@ -8,11 +8,18 @@ import {
     Twitter,
 } from 'lucide-react';
 import AuthorByline from '@/components/public/author-byline';
+import CommentSection from '@/components/public/comment-section';
+import type {
+    PrivateComment,
+    PublicComment,
+} from '@/components/public/comment-section';
+import NewsletterForm from '@/components/public/newsletter-form';
 import PostGrid from '@/components/public/post-grid';
 import PostTableOfContents from '@/components/public/post-table-of-contents';
 import PublicRichText, {
     ExpandableImage,
 } from '@/components/public/public-rich-text';
+import ShareTools from '@/components/public/share-tools';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { useInitials } from '@/hooks/use-initials';
@@ -45,6 +52,8 @@ type Props = {
     previous: PublicPostCard | null;
     next: PublicPostCard | null;
     table_of_contents: TableOfContentsItem[];
+    comments: { data: PublicComment[]; [key: string]: unknown };
+    myComments: PrivateComment[];
 };
 
 export default function PublicPostShow({
@@ -53,7 +62,10 @@ export default function PublicPostShow({
     previous,
     next,
     table_of_contents: tableOfContents,
+    comments,
+    myComments,
 }: Props) {
+    const { community } = usePage().props;
     usePostView(post.slug);
 
     return (
@@ -110,9 +122,24 @@ export default function PublicPostShow({
                         aria-labelledby="post-title"
                         className="min-w-0 lg:order-1"
                     >
-                        <PublicRichText
-                            value={post.body}
-                            tableOfContents={tableOfContents}
+                        <div data-article-body>
+                            <PublicRichText
+                                value={post.body}
+                                tableOfContents={tableOfContents}
+                                contentKey={`post:${post.id}`}
+                            />
+                        </div>
+
+                        <ShareTools
+                            title={post.title}
+                            methods={community.sharingMethods}
+                            postId={post.id}
+                        />
+
+                        <NewsletterForm
+                            location="article_end"
+                            postId={post.id}
+                            className="mt-8"
                         />
 
                         {post.tags.length > 0 && (
@@ -139,6 +166,12 @@ export default function PublicPostShow({
                         )}
 
                         {post.author && <AuthorCard author={post.author} />}
+
+                        <CommentSection
+                            postSlug={post.slug}
+                            comments={comments}
+                            myComments={myComments}
+                        />
                     </article>
                 </div>
             </div>
@@ -149,7 +182,11 @@ export default function PublicPostShow({
                         <span className="moon-dot" aria-hidden />
                         More in {post.category?.name ?? 'the blog'}
                     </h2>
-                    <PostGrid posts={related} />
+                    <PostGrid
+                        posts={related}
+                        contentSource="related"
+                        contentLocation="article_end"
+                    />
                 </section>
             )}
         </>
@@ -171,6 +208,9 @@ function PostNavigation({
             {previous ? (
                 <Link
                     href={postShow(previous.slug)}
+                    data-content-key={`post:${previous.id}`}
+                    data-content-source="related"
+                    data-content-location="post_navigation"
                     className="group grid gap-1 rounded-lg p-3 transition-colors hover:bg-muted"
                     prefetch
                 >
@@ -188,6 +228,9 @@ function PostNavigation({
             {next && (
                 <Link
                     href={postShow(next.slug)}
+                    data-content-key={`post:${next.id}`}
+                    data-content-source="related"
+                    data-content-location="post_navigation"
                     className="group grid gap-1 rounded-lg p-3 text-right transition-colors hover:bg-muted"
                     prefetch
                 >

@@ -7,4 +7,5 @@ namespace App\Domain\Identity\Enums;
 enum UserRole: string
 {
     case Administrator = 'administrator';
+    case Reader = 'reader';
 }

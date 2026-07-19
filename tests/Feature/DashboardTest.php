@@ -14,3 +14,15 @@ test('authenticated users can visit the dashboard', function (): void {
     $response = $this->get(route('dashboard'));
     $response->assertOk();
 });
+
+test('readers cannot visit author or settings pages', function (string $url): void {
+    $reader = User::factory()->reader()->create();
+
+    $this->actingAs($reader)->get($url)->assertForbidden();
+})->with([
+    'dashboard' => '/dashboard',
+    'posts' => '/posts',
+    'community' => '/community/comments',
+    'settings' => '/settings/profile',
+    'passkeys' => '/user/passkeys/options',
+]);

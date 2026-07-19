@@ -61,6 +61,20 @@ class UserFactory extends Factory
     }
 
     /**
+     * Indicate that the user is a restricted reader account.
+     */
+    public function reader(): static
+    {
+        return $this->state(fn (): array => [
+            'role' => UserRole::Reader,
+            'author_slug' => null,
+            'avatar_path' => null,
+            'bio' => null,
+            'social_links' => null,
+        ]);
+    }
+
+    /**
      * Indicate that the model's email address should be unverified.
      */
     public function unverified(): static

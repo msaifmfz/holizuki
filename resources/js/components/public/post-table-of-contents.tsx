@@ -32,7 +32,7 @@ export default function PostTableOfContents({
                     setActiveId(visible[0].target.id);
                 }
             },
-            { rootMargin: '-5rem 0px -70% 0px' },
+            { rootMargin: '-80px 0px -70% 0px' },
         );
 
         headings.forEach((heading) => observer.observe(heading));

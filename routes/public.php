@@ -9,6 +9,7 @@ use App\Http\Public\Controllers\FeedController;
 use App\Http\Public\Controllers\HomeController;
 use App\Http\Public\Controllers\PostViewController;
 use App\Http\Public\Controllers\PostViewEventController;
+use App\Http\Public\Controllers\ReaderAccountController;
 use App\Http\Public\Controllers\RobotsTxtController;
 use App\Http\Public\Controllers\SearchController;
 use App\Http\Public\Controllers\SitemapController;
@@ -44,6 +45,14 @@ Route::get('privacy', fn (): Response => Inertia::render('public/privacy', [
 Route::get('terms', fn (): Response => Inertia::render('public/terms', [
     'seo' => Seo::make(title: 'Terms of Use — '.Seo::siteName(), canonical: route('public.terms')),
 ]))->name('public.terms');
+
+Route::middleware('auth')->group(function (): void {
+    Route::get('account', [ReaderAccountController::class, 'edit'])->name('reader.account.edit');
+    Route::put('account/password', [ReaderAccountController::class, 'updatePassword'])
+        ->middleware('throttle:6,1')
+        ->name('reader.account.password.update');
+    Route::delete('account', [ReaderAccountController::class, 'destroy'])->name('reader.account.destroy');
+});
 
 Route::get('contact', [ContactController::class, 'create'])->name('public.contact.create');
 Route::post('contact', [ContactController::class, 'store'])

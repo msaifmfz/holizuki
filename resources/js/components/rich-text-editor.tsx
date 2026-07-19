@@ -164,6 +164,11 @@ export default function RichTextEditor({
         content: value ?? { type: 'doc', content: [{ type: 'paragraph' }] },
         editable: !readOnly,
         immediatelyRender: false,
+        editorProps: {
+            attributes: {
+                'aria-label': readOnly ? 'Article body' : 'Post body',
+            },
+        },
         onUpdate: ({ editor: currentEditor }) =>
             onChange?.(currentEditor.getJSON()),
     });

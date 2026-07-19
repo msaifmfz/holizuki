@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Admin\Controllers;
 
+use App\Domain\Analytics\Actions\TrackAuthorProductEvent;
 use App\Domain\Identity\Models\User;
 use App\Domain\Publishing\Actions\RebuildPostMetadata;
 use App\Domain\Publishing\Actions\SavePost;
@@ -64,8 +65,11 @@ class PostController extends Controller
         ]);
     }
 
-    public function store(StorePostRequest $request, RebuildPostMetadata $rebuildPostMetadata): RedirectResponse
-    {
+    public function store(
+        StorePostRequest $request,
+        RebuildPostMetadata $rebuildPostMetadata,
+        TrackAuthorProductEvent $trackEvent,
+    ): RedirectResponse {
         $user = $request->authenticatedUser();
         $post = Post::create([
             'author_id' => $user->id,
@@ -75,13 +79,18 @@ class PostController extends Controller
             'body' => ['type' => 'doc', 'content' => [['type' => 'paragraph']]],
         ]);
         $rebuildPostMetadata->handle($post);
+        $trackEvent->handle($user, 'new_post_start', 'post:'.$post->id);
 
         return to_route('posts.edit', $post);
     }
 
-    public function edit(Post $post): Response
+    public function edit(Request $request, Post $post, TrackAuthorProductEvent $trackEvent): Response
     {
         Gate::authorize('update', $post);
+        $user = $request->user();
+        if ($user instanceof User) {
+            $trackEvent->handle($user, 'editor_open', 'post:'.$post->id);
+        }
 
         return Inertia::render('posts/edit', [
             'post' => $this->editorData($post->load('author:id,name', 'lastEditor:id,name', 'tags:id,name')),
@@ -91,15 +100,21 @@ class PostController extends Controller
         ]);
     }
 
-    public function update(UpdatePostRequest $request, Post $post, SavePost $savePost): JsonResponse
-    {
+    public function update(
+        UpdatePostRequest $request,
+        Post $post,
+        SavePost $savePost,
+        TrackAuthorProductEvent $trackEvent,
+    ): JsonResponse {
+        $user = $request->authenticatedUser();
         $updatedPost = $savePost->handle(
             $post,
             $request->validated(),
-            $request->authenticatedUser(),
+            $user,
             createRevision: true,
             force: $request->boolean('force'),
         );
+        $trackEvent->handle($user, 'editor_save', 'post:'.$post->id);
 
         return response()->json($this->autosavePayload($updatedPost));
     }

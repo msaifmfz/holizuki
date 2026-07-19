@@ -41,6 +41,37 @@ class HandleInertiaRequests extends Middleware
                 'user' => $request->user()?->append('avatar_url'),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            'flash' => [
+                'success' => function () use ($request): ?string {
+                    if (! $request->hasSession()) {
+                        return null;
+                    }
+
+                    $message = $request->session()->get('success');
+
+                    return is_string($message) ? $message : null;
+                },
+                'commentSubmitted' => function () use ($request): ?int {
+                    if (! $request->hasSession()) {
+                        return null;
+                    }
+
+                    $commentId = $request->session()->get('comment_submitted');
+
+                    return is_int($commentId) ? $commentId : null;
+                },
+            ],
+            'community' => [
+                'consentVersion' => config('community.consent_version'),
+                'sharingMethods' => config('community.sharing_methods'),
+            ],
+            'analytics' => [
+                'collectionEnabled' => config()->boolean('analytics.collection_enabled')
+                    && (app()->isProduction() || config()->boolean('analytics.allow_non_production_collection')),
+                'measurementId' => config('analytics.measurement_id'),
+                'consentVersion' => config('analytics.consent_version'),
+                'consentDays' => config()->integer('analytics.consent_days'),
+            ],
             'footerCategories' => fn (): array => Cache::remember(
                 Category::FOOTER_CACHE_KEY,
                 600,

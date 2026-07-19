@@ -40,7 +40,11 @@ export default function Home({ featured, popular, posts }: Props) {
                 {showFeatured && popular.length > 0 && (
                     <section className="border-b py-12">
                         <SectionHeading>Popular this month</SectionHeading>
-                        <PostGrid posts={popular} />
+                        <PostGrid
+                            posts={popular}
+                            contentSource="recommendation"
+                            contentLocation="popular"
+                        />
                     </section>
                 )}
 
@@ -51,7 +55,11 @@ export default function Home({ featured, popular, posts }: Props) {
 
                     {posts.data.length > 0 ? (
                         <div className="grid gap-10">
-                            <PostGrid posts={posts.data} />
+                            <PostGrid
+                                posts={posts.data}
+                                contentSource="recommendation"
+                                contentLocation="recent"
+                            />
                             <Pagination paginator={posts} label="Blog pages" />
                         </div>
                     ) : (
@@ -90,7 +98,13 @@ function FeaturedHero({ post }: { post: PublicPostCard }) {
                         )}
                     </p>
                     <h1 className="font-display text-4xl leading-tight font-semibold tracking-tight text-balance sm:text-5xl lg:text-6xl">
-                        <Link href={postShow(post.slug)} prefetch>
+                        <Link
+                            href={postShow(post.slug)}
+                            data-content-key={`post:${post.id}`}
+                            data-content-source="recommendation"
+                            data-content-location="featured_hero"
+                            prefetch
+                        >
                             {post.title}
                         </Link>
                     </h1>
@@ -108,6 +122,9 @@ function FeaturedHero({ post }: { post: PublicPostCard }) {
                         />
                         <Link
                             href={postShow(post.slug)}
+                            data-content-key={`post:${post.id}`}
+                            data-content-source="recommendation"
+                            data-content-location="featured_hero"
                             className="flex items-center gap-1.5 text-sm font-medium hover:underline hover:underline-offset-4"
                             prefetch
                         >
@@ -119,6 +136,9 @@ function FeaturedHero({ post }: { post: PublicPostCard }) {
                 {post.featured_image_url && (
                     <Link
                         href={postShow(post.slug)}
+                        data-content-key={`post:${post.id}`}
+                        data-content-source="recommendation"
+                        data-content-location="featured_hero"
                         tabIndex={-1}
                         aria-hidden
                         prefetch
@@ -152,6 +172,9 @@ function FeaturedSupportingPost({ post }: { post: PublicPostCard }) {
                 <h2 className="font-display text-2xl leading-snug font-semibold tracking-tight text-balance">
                     <Link
                         href={postShow(post.slug)}
+                        data-content-key={`post:${post.id}`}
+                        data-content-source="recommendation"
+                        data-content-location="featured_supporting"
                         className="group-hover:underline group-hover:underline-offset-4 after:absolute after:inset-0"
                         prefetch
                     >

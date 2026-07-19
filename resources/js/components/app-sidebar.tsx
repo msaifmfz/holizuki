@@ -1,6 +1,27 @@
 import { Link } from '@inertiajs/react';
-import { FileText, FolderOpen, Inbox, LayoutGrid, Tags } from 'lucide-react';
+import {
+    Award,
+    BarChart3,
+    FileText,
+    FolderOpen,
+    Inbox,
+    LayoutGrid,
+    MessageSquare,
+    Settings2,
+    Tags,
+    Target,
+    UsersRound,
+} from 'lucide-react';
+import {
+    achievements,
+    audience,
+    goals,
+    posts as analyticsPosts,
+} from '@/actions/App/Http/Admin/Controllers/AnalyticsDashboardController';
+import { edit as analyticsSettings } from '@/actions/App/Http/Admin/Controllers/AnalyticsSettingsController';
 import { index as categoriesIndex } from '@/actions/App/Http/Admin/Controllers/CategoryController';
+import { index as commentsIndex } from '@/actions/App/Http/Admin/Controllers/CommunityCommentController';
+import { index as subscribersIndex } from '@/actions/App/Http/Admin/Controllers/CommunitySubscriberController';
 import { index as inboxIndex } from '@/actions/App/Http/Admin/Controllers/ContactSubmissionController';
 import { index as postsIndex } from '@/actions/App/Http/Admin/Controllers/PostController';
 import { index as tagsIndex } from '@/actions/App/Http/Admin/Controllers/TagController';
@@ -31,6 +52,26 @@ const mainNavItems: NavItem[] = [
         icon: FileText,
     },
     {
+        title: 'Post analytics',
+        href: analyticsPosts(),
+        icon: BarChart3,
+    },
+    {
+        title: 'Audience',
+        href: audience(),
+        icon: UsersRound,
+    },
+    {
+        title: 'Goals',
+        href: goals(),
+        icon: Target,
+    },
+    {
+        title: 'Achievements',
+        href: achievements(),
+        icon: Award,
+    },
+    {
         title: 'Categories',
         href: categoriesIndex(),
         icon: FolderOpen,
@@ -44,6 +85,21 @@ const mainNavItems: NavItem[] = [
         title: 'Inbox',
         href: inboxIndex(),
         icon: Inbox,
+    },
+    {
+        title: 'Comments',
+        href: commentsIndex(),
+        icon: MessageSquare,
+    },
+    {
+        title: 'Subscribers',
+        href: subscribersIndex(),
+        icon: UsersRound,
+    },
+    {
+        title: 'Analytics settings',
+        href: analyticsSettings(),
+        icon: Settings2,
     },
 ];
 

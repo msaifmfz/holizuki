@@ -5,6 +5,12 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Domain\Identity\Actions\ResetUserPassword;
+use App\Http\Auth\Actions\RegisterReader;
+use App\Http\Auth\Responses\RoleAwareLoginResponse;
+use App\Http\Auth\Responses\RoleAwareRedirectAsIntended;
+use App\Http\Auth\Responses\RoleAwareRegisterResponse;
+use App\Http\Auth\Responses\RoleAwareTwoFactorLoginResponse;
+use App\Http\Auth\Responses\RoleAwareVerifyEmailResponse;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -12,8 +18,13 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
+use Laravel\Fortify\Contracts\LoginResponse;
+use Laravel\Fortify\Contracts\RegisterResponse;
+use Laravel\Fortify\Contracts\TwoFactorLoginResponse;
+use Laravel\Fortify\Contracts\VerifyEmailResponse;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
+use Laravel\Fortify\Http\Responses\RedirectAsIntended;
 use Override;
 
 class FortifyServiceProvider extends ServiceProvider
@@ -24,7 +35,11 @@ class FortifyServiceProvider extends ServiceProvider
     #[Override]
     public function register(): void
     {
-        //
+        $this->app->singleton(LoginResponse::class, RoleAwareLoginResponse::class);
+        $this->app->singleton(RegisterResponse::class, RoleAwareRegisterResponse::class);
+        $this->app->singleton(TwoFactorLoginResponse::class, RoleAwareTwoFactorLoginResponse::class);
+        $this->app->singleton(VerifyEmailResponse::class, RoleAwareVerifyEmailResponse::class);
+        $this->app->bind(RedirectAsIntended::class, RoleAwareRedirectAsIntended::class);
     }
 
     /**
@@ -42,6 +57,7 @@ class FortifyServiceProvider extends ServiceProvider
      */
     private function configureActions(): void
     {
+        Fortify::createUsersUsing(RegisterReader::class);
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
     }
 
@@ -53,6 +69,7 @@ class FortifyServiceProvider extends ServiceProvider
         Fortify::loginView(fn (Request $request) => Inertia::render('auth/login', [
             'canResetPassword' => Features::enabled(Features::resetPasswords()),
             'status' => $request->session()->get('status'),
+            'returnTo' => $request->query('return_to'),
         ]));
 
         Fortify::resetPasswordView(fn (Request $request) => Inertia::render('auth/reset-password', [
@@ -63,6 +80,10 @@ class FortifyServiceProvider extends ServiceProvider
 
         Fortify::requestPasswordResetLinkView(fn (Request $request) => Inertia::render('auth/forgot-password', [
             'status' => $request->session()->get('status'),
+        ]));
+
+        Fortify::registerView(fn (Request $request) => Inertia::render('auth/register', [
+            'returnTo' => $request->query('return_to'),
         ]));
 
         Fortify::verifyEmailView(fn (Request $request) => Inertia::render('auth/verify-email', [
@@ -96,5 +117,6 @@ class FortifyServiceProvider extends ServiceProvider
                 $identifier.'|'.$request->ip(),
             );
         });
+
     }
 }

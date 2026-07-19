@@ -38,7 +38,7 @@ export default function AuthorByline({
                             src={author.avatar_url ?? undefined}
                             alt=""
                         />
-                        <AvatarFallback className="text-[0.6rem]">
+                        <AvatarFallback className="text-xs font-medium text-foreground">
                             {getInitials(author.name)}
                         </AvatarFallback>
                     </Avatar>

@@ -7,6 +7,7 @@ namespace App\Domain\Publishing\Models;
 use App\Domain\Identity\Models\User;
 use App\Domain\Publishing\Casts\RichTextDocumentCast;
 use App\Domain\Publishing\Enums\PostStatus;
+use App\Domain\Publishing\Enums\WordCountBand;
 use App\Domain\Publishing\Exceptions\CannotFeatureUnpublishedPost;
 use App\Domain\Publishing\Policies\PostPolicy;
 use App\Domain\Publishing\ValueObjects\RichTextDocument;
@@ -49,6 +50,8 @@ use Override;
  * @property CarbonInterface|null $content_updated_at
  * @property CarbonInterface|null $featured_at
  * @property int|null $reading_time_minutes
+ * @property int $word_count
+ * @property WordCountBand $word_count_band
  * @property string|null $search_text
  * @property PostStatus $status
  * @property CarbonInterface|null $scheduled_at
@@ -64,7 +67,7 @@ use Override;
     'featured_image_path', 'featured_image_alt', 'featured_image_caption', 'featured_at',
     'seo_title', 'meta_description', 'canonical_url', 'og_title', 'og_description', 'og_image_path',
     'noindex', 'content_updated_at',
-    'reading_time_minutes', 'search_text', 'status', 'scheduled_at', 'published_at', 'slug_locked_at',
+    'reading_time_minutes', 'word_count', 'word_count_band', 'search_text', 'status', 'scheduled_at', 'published_at', 'slug_locked_at',
     'lock_version',
 ])]
 #[UsePolicy(PostPolicy::class)]
@@ -96,6 +99,8 @@ class Post extends Model
         'slug_is_manual' => false,
         'noindex' => false,
         'lock_version' => 0,
+        'word_count' => 0,
+        'word_count_band' => WordCountBand::Under500->value,
     ];
 
     /** @return BelongsTo<User, $this> */
@@ -310,6 +315,8 @@ class Post extends Model
             'content_updated_at' => 'datetime',
             'featured_at' => 'datetime',
             'reading_time_minutes' => 'integer',
+            'word_count' => 'integer',
+            'word_count_band' => WordCountBand::class,
             'status' => PostStatus::class,
             'scheduled_at' => 'datetime',
             'published_at' => 'datetime',

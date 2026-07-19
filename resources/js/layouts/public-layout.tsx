@@ -2,9 +2,14 @@ import { Link, usePage } from '@inertiajs/react';
 import { Menu, Rss, Search } from 'lucide-react';
 import { useState } from 'react';
 import type { PropsWithChildren } from 'react';
+import { edit as readerAccount } from '@/actions/App/Http/Public/Controllers/ReaderAccountController';
+import { openPrivacyManager } from '@/analytics/consent';
 import AppLogoIcon from '@/components/app-logo-icon';
 import AppearanceToggle from '@/components/appearance-toggle';
 import { Breadcrumbs } from '@/components/breadcrumbs';
+import AnalyticsConsentManager from '@/components/public/analytics-consent';
+import NewsletterForm from '@/components/public/newsletter-form';
+import PublicAnalytics from '@/components/public/public-analytics';
 import { Button } from '@/components/ui/button';
 import {
     Sheet,
@@ -15,7 +20,7 @@ import {
 } from '@/components/ui/sheet';
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import { cn } from '@/lib/utils';
-import { dashboard, home, login } from '@/routes';
+import { dashboard, home, login, logout } from '@/routes';
 import {
     about,
     archive,
@@ -54,6 +59,8 @@ export default function PublicLayout({ children }: PropsWithChildren) {
 
     return (
         <div className="flex min-h-screen flex-col">
+            <PublicAnalytics />
+            <AnalyticsConsentManager />
             <a
                 href="#main-content"
                 className="fixed top-2 left-2 z-[100] -translate-y-20 rounded-md bg-background px-4 py-2 text-sm font-medium shadow-lg ring-1 ring-border transition-transform focus:translate-y-0"
@@ -111,14 +118,48 @@ export default function PublicLayout({ children }: PropsWithChildren) {
                             </Link>
                         </Button>
                         <AppearanceToggle />
+                        {auth.user?.role === 'reader' && (
+                            <Button
+                                asChild
+                                variant="ghost"
+                                size="sm"
+                                className="hidden sm:inline-flex"
+                            >
+                                <Link href={readerAccount()} prefetch>
+                                    Account
+                                </Link>
+                            </Button>
+                        )}
                         <Button
                             asChild
                             variant="outline"
                             size="sm"
                             className="hidden sm:inline-flex"
                         >
-                            <Link href={auth.user ? dashboard() : login()}>
-                                {auth.user ? 'Dashboard' : 'Sign in'}
+                            <Link
+                                href={
+                                    auth.user?.role === 'administrator'
+                                        ? dashboard()
+                                        : auth.user
+                                          ? logout()
+                                          : login()
+                                }
+                                method={
+                                    auth.user?.role === 'reader'
+                                        ? 'post'
+                                        : 'get'
+                                }
+                                as={
+                                    auth.user?.role === 'reader'
+                                        ? 'button'
+                                        : 'a'
+                                }
+                            >
+                                {auth.user?.role === 'administrator'
+                                    ? 'Dashboard'
+                                    : auth.user
+                                      ? 'Sign out'
+                                      : 'Sign in'}
                             </Link>
                         </Button>
 
@@ -172,6 +213,20 @@ export default function PublicLayout({ children }: PropsWithChildren) {
                                             </Link>
                                         </Button>
                                     ))}
+                                    {auth.user?.role === 'reader' && (
+                                        <Button
+                                            asChild
+                                            variant="ghost"
+                                            className="justify-start"
+                                            onClick={() =>
+                                                setMobileNavOpen(false)
+                                            }
+                                        >
+                                            <Link href={readerAccount()}>
+                                                Account
+                                            </Link>
+                                        </Button>
+                                    )}
                                     <Button
                                         asChild
                                         variant="outline"
@@ -180,14 +235,29 @@ export default function PublicLayout({ children }: PropsWithChildren) {
                                     >
                                         <Link
                                             href={
-                                                auth.user
+                                                auth.user?.role ===
+                                                'administrator'
                                                     ? dashboard()
-                                                    : login()
+                                                    : auth.user
+                                                      ? logout()
+                                                      : login()
+                                            }
+                                            method={
+                                                auth.user?.role === 'reader'
+                                                    ? 'post'
+                                                    : 'get'
+                                            }
+                                            as={
+                                                auth.user?.role === 'reader'
+                                                    ? 'button'
+                                                    : 'a'
                                             }
                                         >
-                                            {auth.user
+                                            {auth.user?.role === 'administrator'
                                                 ? 'Dashboard'
-                                                : 'Sign in'}
+                                                : auth.user
+                                                  ? 'Sign out'
+                                                  : 'Sign in'}
                                         </Link>
                                     </Button>
                                 </nav>
@@ -203,7 +273,7 @@ export default function PublicLayout({ children }: PropsWithChildren) {
             </main>
 
             <footer className="site-footer mt-16 border-t">
-                <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-12 md:grid-cols-3">
+                <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-12 md:grid-cols-2 lg:grid-cols-4">
                     <div className="grid content-start gap-3">
                         <div className="flex items-center gap-2">
                             <span className="flex aspect-square size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
@@ -282,6 +352,8 @@ export default function PublicLayout({ children }: PropsWithChildren) {
                             Terms of Use
                         </Link>
                     </nav>
+
+                    <NewsletterForm location="footer" />
                 </div>
                 <div className="border-t border-border/60">
                     <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-4 text-xs text-muted-foreground">
@@ -296,6 +368,13 @@ export default function PublicLayout({ children }: PropsWithChildren) {
                             <Rss className="size-3.5" />
                             RSS
                         </a>
+                        <button
+                            type="button"
+                            onClick={openPrivacyManager}
+                            className="underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                        >
+                            Privacy choices
+                        </button>
                     </div>
                 </div>
             </footer>
@@ -360,6 +439,7 @@ function PublicBreadcrumbTrail() {
     } else {
         const labels: Record<string, string> = {
             '/about': 'About',
+            '/account': 'Account',
             '/contact': 'Contact',
             '/privacy': 'Privacy Policy',
             '/search': 'Search',

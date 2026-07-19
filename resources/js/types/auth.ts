@@ -9,6 +9,7 @@ export type User = {
     id: number;
     name: string;
     email: string;
+    role: 'administrator' | 'reader';
     avatar?: string;
     author_slug: string | null;
     avatar_url: string | null;
@@ -22,7 +23,7 @@ export type User = {
 };
 
 export type Auth = {
-    user: User;
+    user: User | null;
 };
 
 /* @chisel-passkeys */

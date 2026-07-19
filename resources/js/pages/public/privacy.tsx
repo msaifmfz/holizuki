@@ -1,6 +1,9 @@
-import { Head } from '@inertiajs/react';
+import { Head, usePage } from '@inertiajs/react';
+import { openPrivacyManager } from '@/analytics/consent';
 
 export default function Privacy() {
+    const { analytics } = usePage().props;
+
     return (
         <>
             <Head title="Privacy Policy" />
@@ -20,10 +23,43 @@ export default function Privacy() {
                             What this site collects
                         </h2>
                         <p>
-                            Reading this blog requires no account and no
-                            personal information. The site does not run
-                            third-party analytics or advertising trackers.
+                            Reading this blog requires no account. If you create
+                            a Reader account, we store your fixed public display
+                            name, email address, password hash, and verification
+                            status to support commenting and account recovery.
                         </p>
+                    </section>
+                    <section className="grid gap-3">
+                        <h2 className="font-display text-2xl font-semibold">
+                            Optional Google Analytics
+                        </h2>
+                        <p>
+                            Google Analytics 4 is strictly opt-in. Before you
+                            accept, this site does not load Google’s tag, create
+                            GA cookies, or send cookieless pings. If accepted,
+                            we send sanitized page paths without query strings
+                            or fragments and a small allowlisted set of reading,
+                            sharing, navigation, download, subscription, and
+                            comment-submission events. Comment text, names,
+                            email addresses, search queries, and other identity
+                            are never included.
+                        </p>
+                        <p>
+                            Google event data is retained for 14 months. Local
+                            aggregate reports, goals, and achieved milestones
+                            may be kept indefinitely. Both accept and decline
+                            choices expire after {analytics.consentDays} days.
+                            You can withdraw at any time; withdrawal stops
+                            further events, removes known GA cookies, and
+                            reloads the page.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={openPrivacyManager}
+                            className="w-fit font-medium underline underline-offset-4"
+                        >
+                            Review privacy choices
+                        </button>
                     </section>
                     <section className="grid gap-3">
                         <h2 className="font-display text-2xl font-semibold">
@@ -36,6 +72,34 @@ export default function Privacy() {
                             identifier are recorded alongside the submission to
                             prevent abuse. This information is never sold or
                             shared, and is deleted once it is no longer needed.
+                        </p>
+                    </section>
+                    <section className="grid gap-3">
+                        <h2 className="font-display text-2xl font-semibold">
+                            Comments
+                        </h2>
+                        <p>
+                            Verified Readers may submit plain-text comments.
+                            Your chosen display name and approved comment are
+                            public; pending and rejected comments remain
+                            private. Every comment is moderated. Rejected
+                            comments are retained for up to 90 days, deleted
+                            comment bodies for up to 30 days, and approved
+                            comments until deletion.
+                        </p>
+                    </section>
+                    <section className="grid gap-3">
+                        <h2 className="font-display text-2xl font-semibold">
+                            Newsletter subscriptions
+                        </h2>
+                        <p>
+                            Newsletter email addresses are encrypted at rest and
+                            paired with a normalized one-way HMAC for exact
+                            lookup and suppression. Confirmation and unsubscribe
+                            tokens are stored only as hashes. Unconfirmed
+                            subscriptions expire after seven days. Unsubscribing
+                            immediately erases the encrypted address while
+                            retaining the suppression hash.
                         </p>
                     </section>
                     <section className="grid gap-3">
@@ -60,8 +124,9 @@ export default function Privacy() {
                             The site sets a small number of first-party cookies:
                             a session cookie required for the site to function,
                             and a preference cookie remembering your light or
-                            dark theme choice. No cross-site tracking cookies
-                            are used.
+                            dark theme choice. Google Analytics cookies are
+                            possible only after explicit acceptance and can be
+                            withdrawn through Privacy choices in the footer.
                         </p>
                     </section>
                     <section className="grid gap-3">

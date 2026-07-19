@@ -92,8 +92,8 @@ jobs:
       - name: Run backend tests with coverage
         run: devbox run -- composer test:coverage
 
-  postgres-reader-tests:
-    name: PostgreSQL reader tests
+  postgres-persistence-tests:
+    name: PostgreSQL persistence tests
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     services:
@@ -137,12 +137,16 @@ jobs:
           cp .env.example .env
           devbox run -- php artisan key:generate --no-interaction
 
-      - name: Run reader tests against PostgreSQL
+      - name: Run persistence tests against PostgreSQL
         run: >-
           devbox run -- php artisan test --compact
-          tests/Feature/PostReaderMetadataTest.php
-          tests/Feature/Public/ReaderDiscoveryTest.php
-          tests/Feature/Public/PostViewTrackingTest.php
+          tests/Feature/Publishing/PostReaderMetadataTest.php
+          tests/Feature/Reading/ReaderDiscoveryTest.php
+          tests/Feature/Reading/PostViewTrackingTest.php
+          tests/Feature/Analytics/AnalyticsSynchronizationTest.php
+          tests/Feature/Analytics/UrlAliasProjectionTest.php
+          tests/Feature/Community/NewsletterSubscriptionTest.php
+          tests/Feature/Community/CommentWorkflowTest.php
 
   frontend:
     name: Frontend

@@ -15,6 +15,20 @@ declare module '@inertiajs/core' {
             auth: Auth;
             sidebarOpen: boolean;
             footerCategories: FooterCategory[];
+            flash: {
+                success: string | null;
+                commentSubmitted: number | null;
+            };
+            community: {
+                consentVersion: string;
+                sharingMethods: string[];
+            };
+            analytics: {
+                collectionEnabled: boolean;
+                measurementId: string | null;
+                consentVersion: string;
+                consentDays: number;
+            };
             [key: string]: unknown;
         };
     }

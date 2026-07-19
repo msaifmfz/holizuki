@@ -88,6 +88,7 @@ export default function TagMultiSelect({
                         variant="outline"
                         role="combobox"
                         aria-expanded={open}
+                        aria-label="Tags"
                         disabled={atLimit}
                         className="justify-between font-normal text-muted-foreground"
                     >

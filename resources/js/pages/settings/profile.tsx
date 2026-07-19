@@ -14,10 +14,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { useInitials } from '@/hooks/use-initials';
 import { edit } from '@/routes/profile';
 import { send } from '@/routes/verification';
-import type { Auth, SocialLinks } from '@/types';
+import type { SocialLinks, User } from '@/types';
 
 type PageProps = {
-    auth: Auth;
+    auth: { user: User };
 };
 
 const socialFields: Array<{ key: keyof SocialLinks; label: string }> = [
@@ -233,6 +233,7 @@ export default function Profile({
                                     ref={avatarInput}
                                     type="file"
                                     name="avatar"
+                                    aria-label="Avatar image"
                                     accept="image/jpeg,image/png,image/webp"
                                     className="sr-only"
                                     onChange={(event) =>

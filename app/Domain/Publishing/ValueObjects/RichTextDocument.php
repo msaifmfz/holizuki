@@ -64,16 +64,14 @@ final readonly class RichTextDocument implements Arrayable, JsonSerializable
 
     public function readingTime(): int
     {
-        $text = $this->plainText();
+        return max(1, (int) ceil($this->wordCount() / self::WORDS_PER_MINUTE));
+    }
 
-        if ($text === '') {
-            return 1;
-        }
+    public function wordCount(): int
+    {
+        preg_match_all("/[\\p{L}\\p{N}]+(?:['’_-][\\p{L}\\p{N}]+)*/u", $this->plainText(), $matches);
 
-        preg_match_all("/[\\p{L}\\p{N}]+(?:['’_-][\\p{L}\\p{N}]+)*/u", $text, $matches);
-        $wordCount = count($matches[0]);
-
-        return max(1, (int) ceil($wordCount / self::WORDS_PER_MINUTE));
+        return count($matches[0]);
     }
 
     /** @return list<int> */

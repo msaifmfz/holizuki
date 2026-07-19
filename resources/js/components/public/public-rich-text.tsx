@@ -14,6 +14,7 @@ import { createLowlight } from 'lowlight';
 import { Check, Copy, Expand } from 'lucide-react';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { trackAnalyticsEvent } from '@/analytics/tracker';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -67,6 +68,7 @@ type Props = {
     value: RichTextDocument | null;
     tableOfContents?: TableOfContentsItem[];
     className?: string;
+    contentKey?: string;
 };
 
 type HighlightNode = {
@@ -81,6 +83,7 @@ export default function PublicRichText({
     value,
     tableOfContents,
     className,
+    contentKey,
 }: Props) {
     const headings = normalizeTableOfContents(value, tableOfContents);
     let headingIndex = 0;
@@ -151,6 +154,7 @@ export default function PublicRichText({
                         key={key}
                         code={getRichTextContent(node)}
                         language={node.attrs?.language}
+                        contentKey={contentKey}
                     />
                 );
             case 'image':
@@ -172,9 +176,11 @@ export default function PublicRichText({
 export function CodeBlock({
     code,
     language,
+    contentKey,
 }: {
     code: string;
     language: unknown;
+    contentKey?: string;
 }) {
     const [copied, setCopied] = useState(false);
     const resetTimer = useRef<number | null>(null);
@@ -196,6 +202,15 @@ export function CodeBlock({
         }
 
         await navigator.clipboard.writeText(code);
+
+        if (contentKey) {
+            trackAnalyticsEvent('copy_code', {
+                content_key: contentKey,
+                language: normalizedLanguage,
+                content_location: 'article_body',
+            });
+        }
+
         setCopied(true);
 
         if (resetTimer.current !== null) {

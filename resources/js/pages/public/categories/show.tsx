@@ -23,7 +23,11 @@ export default function CategoryShow({ category, posts }: Props) {
                 />
                 {posts.data.length > 0 ? (
                     <>
-                        <PostGrid posts={posts.data} />
+                        <PostGrid
+                            posts={posts.data}
+                            contentSource="category"
+                            contentLocation="listing"
+                        />
                         <Pagination
                             paginator={posts}
                             label={`${category.name} pages`}

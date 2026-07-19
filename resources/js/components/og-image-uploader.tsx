@@ -98,6 +98,7 @@ export default function OgImageUploader({
             <input
                 ref={inputRef}
                 type="file"
+                aria-label="Social sharing image"
                 accept="image/jpeg,image/png,image/webp"
                 className="sr-only"
                 onChange={(event) => {

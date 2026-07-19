@@ -30,6 +30,42 @@ export default function Terms() {
                     </section>
                     <section className="grid gap-3">
                         <h2 className="font-display text-2xl font-semibold">
+                            Reader accounts and comments
+                        </h2>
+                        <p>
+                            Reader accounts are for verified public commenting,
+                            login, logout, and account recovery only. They do
+                            not grant access to author, administration, or
+                            settings areas. Your display name is fixed for this
+                            version of the service and appears beside approved
+                            comments.
+                        </p>
+                        <p>
+                            Comments must be your own plain-text contribution
+                            and may not be abusive, unlawful, deceptive, or
+                            disclose another person’s private information. All
+                            submissions enter moderation. You may edit or delete
+                            your own comment for 15 minutes; an edit to an
+                            approved comment hides it until it is approved
+                            again. Moderators may approve, reject, or delete
+                            comments, but do not rewrite reader content.
+                        </p>
+                    </section>
+                    <section className="grid gap-3">
+                        <h2 className="font-display text-2xl font-semibold">
+                            Newsletter and sharing
+                        </h2>
+                        <p>
+                            Newsletter enrollment requires email confirmation
+                            and can be cancelled immediately through the
+                            unsubscribe action. Sharing controls hand off to
+                            your browser, email client, or the selected external
+                            service; that destination’s terms and privacy
+                            practices then apply.
+                        </p>
+                    </section>
+                    <section className="grid gap-3">
+                        <h2 className="font-display text-2xl font-semibold">
                             No warranty
                         </h2>
                         <p>

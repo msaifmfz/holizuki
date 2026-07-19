@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Domain\Identity\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Domain\Identity\Enums\UserRole;
 use Carbon\CarbonInterface;
 use Database\Factories\UserFactory;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -40,7 +40,7 @@ use Override;
  */
 #[Fillable(['name', 'email', 'password', 'author_slug', 'avatar_path', 'bio', 'social_links'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
-class User extends Authenticatable implements PasskeyUser
+class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable;
@@ -52,7 +52,7 @@ class User extends Authenticatable implements PasskeyUser
      */
     #[Override]
     protected $attributes = [
-        'role' => UserRole::Administrator->value,
+        'role' => UserRole::Reader->value,
     ];
 
     protected static function newFactory(): UserFactory
@@ -60,15 +60,19 @@ class User extends Authenticatable implements PasskeyUser
         return UserFactory::new();
     }
 
-    /**
-     * Administrator is the only role today, so every user passes. The
-     * exhaustive match makes static analysis flag this method as soon as a
-     * new role case is added.
-     */
     public function isAdministrator(): bool
     {
         return match ($this->role) {
             UserRole::Administrator => true,
+            UserRole::Reader => false,
+        };
+    }
+
+    public function isReader(): bool
+    {
+        return match ($this->role) {
+            UserRole::Administrator => false,
+            UserRole::Reader => true,
         };
     }
 

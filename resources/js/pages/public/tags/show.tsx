@@ -22,7 +22,11 @@ export default function TagShow({ tag, posts }: Props) {
                 />
                 {posts.data.length > 0 ? (
                     <>
-                        <PostGrid posts={posts.data} />
+                        <PostGrid
+                            posts={posts.data}
+                            contentSource="category"
+                            contentLocation="tag_listing"
+                        />
                         <Pagination
                             paginator={posts}
                             label={`${tag.name} pages`}

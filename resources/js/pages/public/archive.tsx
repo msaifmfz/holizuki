@@ -125,7 +125,11 @@ export default function Archive({ period, periods, posts }: Props) {
                     <section aria-label={`Posts from ${period.label}`}>
                         {posts.data.length > 0 ? (
                             <div className="grid gap-10">
-                                <PostGrid posts={posts.data} />
+                                <PostGrid
+                                    posts={posts.data}
+                                    contentSource="recommendation"
+                                    contentLocation="archive"
+                                />
                                 <Pagination
                                     paginator={posts}
                                     label="Archive pages"

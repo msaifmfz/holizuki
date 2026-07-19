@@ -37,6 +37,22 @@ test('email can be verified', function (): void {
     $response->assertRedirect(route('dashboard', absolute: false).'?verified=1');
 });
 
+test('verified readers return to the public site instead of the author dashboard', function (): void {
+    $reader = User::factory()->reader()->unverified()->create();
+    Event::fake();
+    $verificationUrl = URL::temporarySignedRoute(
+        'verification.verify',
+        now()->addMinutes(60),
+        ['id' => $reader->id, 'hash' => sha1($reader->email)],
+    );
+
+    $this->actingAs($reader)->get($verificationUrl)
+        ->assertRedirect('/');
+
+    Event::assertDispatched(Verified::class);
+    expect($reader->fresh()->hasVerifiedEmail())->toBeTrue();
+});
+
 test('email is not verified with invalid hash', function (): void {
     $user = User::factory()->unverified()->create();
 
@@ -80,6 +96,14 @@ test('verified user is redirected to dashboard from verification prompt', functi
 
     Event::assertNotDispatched(Verified::class);
     $response->assertRedirect(route('dashboard', absolute: false));
+});
+
+test('verified readers visiting the verification prompt return home', function (): void {
+    $reader = User::factory()->reader()->create();
+
+    $this->actingAs($reader)
+        ->get(route('verification.notice'))
+        ->assertRedirect('/');
 });
 
 test('already verified user visiting verification link is redirected without firing event again', function (): void {

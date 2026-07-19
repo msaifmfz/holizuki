@@ -32,6 +32,9 @@ export type PublicPostCard = {
 };
 
 export type PublicPostDetail = Omit<PublicPostCard, 'author'> & {
+    word_count: number;
+    word_count_band:
+        'under_500' | '500_999' | '1000_1499' | '1500_2499' | '2500_plus';
     body: RichTextDocument | null;
     updated_at: string | null;
     seo_title: string | null;

@@ -12,7 +12,7 @@ use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
 
 #[Signature('posts:rebuild-metadata {--missing : Rebuild only posts without derived metadata}')]
-#[Description('Rebuild post reading-time and search metadata')]
+#[Description('Rebuild post reading-time, word-count, and search metadata')]
 class RebuildPostMetadataCommand extends Command
 {
     public function handle(RebuildPostMetadata $rebuildPostMetadata): int
@@ -21,7 +21,10 @@ class RebuildPostMetadataCommand extends Command
 
         if ($this->option('missing')) {
             $query->where(function (Builder $query): void {
-                $query->whereNull('reading_time_minutes')->orWhereNull('search_text');
+                $query
+                    ->whereNull('reading_time_minutes')
+                    ->orWhereNull('search_text')
+                    ->orWhere('word_count', 0);
             });
         }
 
