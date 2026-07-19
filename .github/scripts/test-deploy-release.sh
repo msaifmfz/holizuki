@@ -29,7 +29,14 @@ cat >"$fake_bin/helm" <<'SCRIPT'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 printf 'helm %s\n' "$*" >>"$TEST_COMMAND_LOG"
-[[ "${1:-}" != history ]]
+if [[ "${1:-}" == history ]]; then
+    if [[ -n "${TEST_HELM_HISTORY_REVISION:-}" ]]; then
+        printf '[{"revision":%s}]\n' "$TEST_HELM_HISTORY_REVISION"
+        exit 0
+    fi
+
+    exit 1
+fi
 SCRIPT
 
 cat >"$fake_bin/kubectl" <<'SCRIPT'
@@ -53,9 +60,13 @@ if [[ "$*" == *'127.0.0.1'* ]]; then
     done
 
     [[ -f "$TEST_PORT_FORWARD_READY" ]]
+
+    if [[ "$*" == *'/ready'* && "${TEST_READY_FAILURE:-false}" == true ]]; then
+        exit 1
+    fi
 fi
 if [[ "$*" == *"%{http_code}"* ]]; then
-    printf '200'
+    printf '%s' "${TEST_EXTERNAL_STATUS:-200}"
 fi
 SCRIPT
 
@@ -68,6 +79,8 @@ chmod +x "$fake_bin"/*
 export PATH="$fake_bin:$PATH"
 export TEST_COMMAND_LOG="$log"
 export TEST_PORT_FORWARD_READY="$port_forward_ready"
+export HOLIZUKI_HEALTH_ATTEMPTS=2
+export HOLIZUKI_HEALTH_RETRY_DELAY=0
 
 chart="$temporary_directory/holizuki-0.1.0.tgz"
 manifest="$temporary_directory/release-manifest.json"
@@ -113,5 +126,54 @@ grep -Fq 'helm upgrade holizuki' "$log"
 grep -Fq -- '--set-string image.digest=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' "$log"
 grep -Fq 'kubectl --kubeconfig' "$log"
 jq --exit-status '.release == "v1.2.3" and .deployedAt != null' "$HOLIZUKI_DEPLOY_ROOT/history/production/v1.2.3.json" >/dev/null
+
+rm -f "$HOLIZUKI_DEPLOY_ROOT/history/production/v1.2.3.json" "$port_forward_ready"
+: >"$log"
+export TEST_READY_FAILURE=true
+
+if "$deployment_script" \
+    production \
+    v1.2.3 \
+    "$chart" \
+    "$chart_checksum" \
+    "$manifest" \
+    "$manifest_checksum" \
+    "$environment_values" \
+    "$environment_values_checksum" \
+    app.example.test \
+    https://app.example.test; then
+    printf 'A failed readiness check unexpectedly succeeded.\n' >&2
+    exit 1
+fi
+
+grep -Fq 'helm uninstall holizuki' "$log"
+[[ ! -f "$HOLIZUKI_DEPLOY_ROOT/history/production/v1.2.3.json" ]]
+
+rm -f "$port_forward_ready"
+: >"$log"
+export TEST_READY_FAILURE=false
+export TEST_EXTERNAL_STATUS=503
+export TEST_HELM_HISTORY_REVISION=7
+
+if "$deployment_script" \
+    production \
+    v1.2.3 \
+    "$chart" \
+    "$chart_checksum" \
+    "$manifest" \
+    "$manifest_checksum" \
+    "$environment_values" \
+    "$environment_values_checksum" \
+    app.example.test \
+    https://app.example.test; then
+    printf 'A failed external health check unexpectedly succeeded.\n' >&2
+    exit 1
+fi
+
+grep -Fq 'helm rollback holizuki 7' "$log"
+if grep -Fq 'helm uninstall holizuki' "$log"; then
+    printf 'An existing release was uninstalled instead of rolled back.\n' >&2
+    exit 1
+fi
 
 printf 'Helm deployment tests passed.\n'

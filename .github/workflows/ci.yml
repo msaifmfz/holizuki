@@ -2,6 +2,11 @@ name: CI
 
 on:
   workflow_call:
+    inputs:
+      checkout_ref:
+        description: Immutable commit to test when CI is called by another workflow.
+        required: false
+        type: string
   workflow_dispatch:
   push:
     branches:
@@ -23,7 +28,7 @@ env:
 jobs:
   development-environment:
     name: Development environment
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     steps:
@@ -31,6 +36,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Bootstrap toolchain
         uses: ./.github/actions/bootstrap
@@ -43,7 +49,7 @@ jobs:
 
   php-quality:
     name: PHP quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
@@ -51,6 +57,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Bootstrap toolchain
         uses: ./.github/actions/bootstrap
@@ -62,7 +69,7 @@ jobs:
 
   backend-tests:
     name: Backend tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
@@ -70,6 +77,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Bootstrap toolchain
         uses: ./.github/actions/bootstrap
@@ -86,11 +94,11 @@ jobs:
 
   postgres-reader-tests:
     name: PostgreSQL reader tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     services:
       postgres:
-        image: postgres:18.3
+        image: postgres:18.3@sha256:7e32e9833a6fb1c92c32552794cb6ed569d51b445a54907d35fc112ef39684db
         env:
           POSTGRES_DB: holizuki
           POSTGRES_PASSWORD: postgres
@@ -117,6 +125,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Bootstrap toolchain
         uses: ./.github/actions/bootstrap
@@ -137,7 +146,7 @@ jobs:
 
   frontend:
     name: Frontend
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
@@ -145,6 +154,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Bootstrap toolchain
         uses: ./.github/actions/bootstrap
@@ -160,7 +170,7 @@ jobs:
 
   browser-smoke:
     name: Browser smoke
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     steps:
@@ -168,6 +178,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Bootstrap toolchain
         uses: ./.github/actions/bootstrap
@@ -199,7 +210,7 @@ jobs:
 
   workflow-integrity:
     name: Workflow integrity
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
 
     steps:
@@ -207,6 +218,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Check shell scripts
         run: |
@@ -218,7 +230,7 @@ jobs:
           bash -n docker/entrypoint.sh
 
       - name: Check GitHub Actions workflows
-        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/*.yml
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/*.yml
 
       - name: Test release classification
         run: bash .github/scripts/test-classify-release.sh
@@ -229,9 +241,15 @@ jobs:
       - name: Test atomic deployment
         run: bash .github/scripts/test-deploy-release.sh
 
+      - name: Test deployment kubeconfig creation
+        run: bash .github/scripts/test-create-deployer-kubeconfig.sh
+
+      - name: Test immutable release publication
+        run: bash .github/scripts/test-publish-release.sh
+
   deployment-manifests:
     name: Deployment manifests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       CRD_SCHEMA_CATALOG_COMMIT: 34cef0fc2698bbb611f475515e555a2d7ca85b6c
@@ -241,16 +259,31 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - name: Resolve deployment tool versions
+        id: tools
+        run: |
+          # shellcheck disable=SC1091
+          source deploy/platform/versions.env
+          {
+            echo "helm_version=$HELM_VERSION"
+            echo "kubeconform_checksum=$KUBECONFORM_CHECKSUM"
+            echo "kubeconform_version=$KUBECONFORM_VERSION"
+            kubernetes_version="${K3S_VERSION#v}"
+            kubernetes_version="${kubernetes_version%%+*}"
+            echo "kubernetes_version=${kubernetes_version%.*}.0"
+          } >>"$GITHUB_OUTPUT"
 
       - name: Set up Helm
         uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
         with:
-          version: v4.2.3
+          version: ${{ steps.tools.outputs.helm_version }}
 
       - name: Install kubeconform
         env:
-          KUBECONFORM_CHECKSUM: 9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883
-          KUBECONFORM_VERSION: v0.8.0
+          KUBECONFORM_CHECKSUM: ${{ steps.tools.outputs.kubeconform_checksum }}
+          KUBECONFORM_VERSION: ${{ steps.tools.outputs.kubeconform_version }}
         run: |
           archive="$RUNNER_TEMP/kubeconform.tar.gz"
           curl --fail --location --silent --show-error \
@@ -268,28 +301,30 @@ jobs:
           helm lint deploy/helm/platform
 
       - name: Validate rendered Kubernetes resources
+        env:
+          KUBERNETES_VERSION: ${{ steps.tools.outputs.kubernetes_version }}
         run: |
           crd_schema="https://raw.githubusercontent.com/datreeio/CRDs-catalog/$CRD_SCHEMA_CATALOG_COMMIT/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json"
           helm template holizuki deploy/helm/holizuki \
             --namespace production \
             --values deploy/helm/holizuki/values-production.yaml \
-            | kubeconform -strict -summary -kubernetes-version 1.35.0 \
+            | kubeconform -strict -summary -kubernetes-version "$KUBERNETES_VERSION" \
               -schema-location default -schema-location "$crd_schema"
           helm template holizuki deploy/helm/holizuki \
             --namespace staging \
             --values deploy/helm/holizuki/values-staging.yaml \
-            | kubeconform -strict -summary -kubernetes-version 1.35.0 \
+            | kubeconform -strict -summary -kubernetes-version "$KUBERNETES_VERSION" \
               -schema-location default -schema-location "$crd_schema"
           helm template holizuki-platform deploy/helm/platform \
             --set backup.enabled=true \
             --set monitoring.enabled=true \
             --set postgres.monitoringEnabled=true \
-            | kubeconform -strict -summary -kubernetes-version 1.35.0 \
+            | kubeconform -strict -summary -kubernetes-version "$KUBERNETES_VERSION" \
               -schema-location default -schema-location "$crd_schema"
 
   container-image:
     name: Container image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
 
     steps:
@@ -297,6 +332,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Resolve pinned build images
         id: runtime
@@ -316,7 +352,7 @@ jobs:
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           build-args: |
-            APP_COMMIT=${{ github.sha }}
+            APP_COMMIT=${{ inputs.checkout_ref || github.sha }}
             COMPOSER_BASE_IMAGE=${{ steps.runtime.outputs.composer_base_image }}
             NODE_BASE_IMAGE=${{ steps.runtime.outputs.node_base_image }}
             PHP_BASE_IMAGE=${{ steps.runtime.outputs.php_base_image }}

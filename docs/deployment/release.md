@@ -28,10 +28,10 @@ git pull --ff-only
 candidate_commit="$(git rev-parse HEAD)"
 git tag --sign v1.0.0-rc.1 "$candidate_commit"
 git push origin v1.0.0-rc.1
-gh release create v1.0.0-rc.1 --prerelease --verify-tag --generate-notes
+gh workflow run deploy.yml --ref v1.0.0-rc.1 --field tag=v1.0.0-rc.1
 ```
 
-The published prerelease starts the deployment workflow. Check:
+The workflow must be dispatched from the same tag supplied in `tag`. It tests and deploys that immutable commit, attaches the signed bundle and staging verification to a draft, then publishes the prerelease. Check:
 
 ```bash
 kubectl --kubeconfig /srv/holizuki/kubeconfig/staging.yaml -n staging get deployments,pods,jobs
@@ -49,10 +49,10 @@ Use the exact candidate commit. If any application or deployment file changes, p
 candidate_commit="$(git rev-list -n 1 v1.0.0-rc.1)"
 git tag --sign v1.0.0 "$candidate_commit"
 git push origin v1.0.0
-gh release create v1.0.0 --verify-tag --generate-notes
+gh workflow run deploy.yml --ref v1.0.0 --field tag=v1.0.0
 ```
 
-The production GitHub environment should require approval. The workflow fails closed unless it finds both a same-version candidate manifest and a successful staging-deployment marker whose commit and image digest match the stable tag.
+The production GitHub environment should require approval. The workflow fails closed unless it finds both a same-version immutable candidate manifest and an attested successful staging-deployment marker whose commit and image digest match the stable tag. It publishes the stable immutable release only after production deployment succeeds.
 
 ## What a deployment does
 
@@ -63,7 +63,7 @@ The production GitHub environment should require approval. The workflow fails cl
 5. Helm runs the migration hook, then performs an atomic rolling upgrade.
 6. Kubernetes startup, readiness, and liveness probes gate availability.
 7. The server checks `/up` and `/ready` from inside the namespace and verifies the public ingress/TLS response.
-8. A failed Helm upgrade rolls back automatically. A post-upgrade health failure rolls the application back to the previous Helm revision.
+8. A failed Helm upgrade rolls back automatically. A post-upgrade health failure rolls the application back to the previous Helm revision, or uninstalls a failed initial release.
 9. The deployed digest and timestamp are recorded under `/srv/holizuki/history/ENVIRONMENT`.
 
 Database migrations are not automatically reversed. Every production migration must use an expand-and-contract sequence so the old and new application versions can run against the schema during rollout and rollback.

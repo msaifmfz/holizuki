@@ -24,6 +24,7 @@ assert_digest_reference "$PHP_BASE_IMAGE_STAGING"
 assert_digest_reference "$NODE_BASE_IMAGE"
 assert_digest_reference "$COMPOSER_BASE_IMAGE"
 assert_digest_reference "$POSTGRES_IMAGE"
+[[ "$KUBECONFORM_CHECKSUM" =~ ^[a-f0-9]{64}$ ]]
 
 [[ "$PHP_BASE_IMAGE_PRODUCTION" =~ php([0-9]+\.[0-9]+) ]]
 production_php_version="${BASH_REMATCH[1]}"
@@ -42,5 +43,12 @@ fi
 
 grep -Fq "  image: $POSTGRES_IMAGE" "$repository_root/deploy/helm/platform/values.yaml"
 grep -Fq "node-name: holizuki-01" "$repository_root/deploy/server/k3s-config.yaml"
+grep -Fq 'source deploy/platform/versions.env' "$repository_root/.github/workflows/ci.yml"
+grep -Fq 'source deploy/platform/versions.env' "$repository_root/.github/workflows/deploy.yml"
+
+if grep -Eq 'version: v[0-9]+\.[0-9]+\.[0-9]+' "$repository_root/.github/workflows/"*.yml; then
+    printf 'Helm workflow versions must come from deploy/platform/versions.env.\n' >&2
+    exit 1
+fi
 
 printf 'Deployment configuration consistency tests passed.\n'

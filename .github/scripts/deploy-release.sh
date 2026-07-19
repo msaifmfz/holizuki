@@ -13,6 +13,8 @@ environment_values="${7:-}"
 expected_environment_values_checksum="${8:-}"
 host="${9:-}"
 external_url="${10:-}"
+health_attempts="${HOLIZUKI_HEALTH_ATTEMPTS:-20}"
+health_retry_delay="${HOLIZUKI_HEALTH_RETRY_DELAY:-1}"
 
 root="${HOLIZUKI_DEPLOY_ROOT:-/srv/holizuki}"
 release_name=holizuki
@@ -52,7 +54,15 @@ rollback() {
             --namespace "$namespace" \
             --timeout 10m \
             --wait || true
+        return
     fi
+
+    printf 'Health verification failed on the initial install; uninstalling the release.\n' >&2
+    helm uninstall "$release_name" \
+        --kubeconfig "$kubeconfig" \
+        --namespace "$namespace" \
+        --timeout 10m \
+        --wait || true
 }
 
 verify_internal_health() {
@@ -70,15 +80,15 @@ verify_internal_health() {
         port-forward "service/$release_name" "$local_port:80" >"$root/tmp/$environment/port-forward.log" 2>&1 &
     port_forward_pid=$!
 
-    for _ in {1..20}; do
-        if curl --fail --header "Host: $host" --max-time 3 --silent "http://127.0.0.1:$local_port/up" >/dev/null 2>&1; then
-            curl --fail --header "Host: $host" --max-time 3 --silent "http://127.0.0.1:$local_port/ready" >/dev/null
+    for ((attempt = 1; attempt <= health_attempts; attempt++)); do
+        if curl --fail --header "Host: $host" --max-time 3 --silent "http://127.0.0.1:$local_port/up" >/dev/null 2>&1 \
+            && curl --fail --header "Host: $host" --max-time 3 --silent "http://127.0.0.1:$local_port/ready" >/dev/null 2>&1; then
             stop_port_forward
             port_forward_pid=''
-            return
+            return 0
         fi
 
-        sleep 1
+        sleep "$health_retry_delay"
     done
 
     stop_port_forward
@@ -111,10 +121,12 @@ verify_external_health() {
 }
 
 [[ "$environment" == production || "$environment" == staging ]] || die 'The environment must be production or staging.'
+[[ "$health_attempts" =~ ^[1-9][0-9]*$ ]] || die 'The health attempt count must be a positive integer.'
+[[ "$health_retry_delay" =~ ^[0-9]+([.][0-9]+)?$ ]] || die 'The health retry delay must be a non-negative number.'
 if [[ "$environment" == production ]]; then
-    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die 'Production requires a stable release tag.'
+    [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || die 'Production requires a stable release tag.'
 else
-    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]] || die 'Staging requires a release-candidate tag.'
+    [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\.(0|[1-9][0-9]*)$ ]] || die 'Staging requires a release-candidate tag.'
 fi
 [[ "$root" =~ ^/[A-Za-z0-9._/-]+$ && "$root" != / ]] || die 'The deployment root is unsafe.'
 [[ -f "$chart" ]] || die 'The Helm chart does not exist.'

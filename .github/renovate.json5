@@ -1,6 +1,10 @@
 {
     $schema: 'https://docs.renovatebot.com/renovate-schema.json',
-    extends: ['config:recommended', 'docker:pinDigests'],
+    extends: [
+        'config:recommended',
+        'docker:pinDigests',
+        'helpers:pinGitHubActionDigests',
+    ],
     timezone: 'UTC',
     schedule: ['before 7am on monday'],
     minimumReleaseAge: '7 days',
@@ -20,12 +24,37 @@
             groupName: 'github-actions',
         },
         {
-            matchManagers: ['dockerfile', 'custom.regex'],
+            matchManagers: ['dockerfile'],
+            groupName: 'container-images',
+        },
+        {
+            matchDatasources: ['docker'],
+            matchManagers: ['custom.regex'],
             groupName: 'container-images',
         },
         {
             matchManagers: ['devbox'],
             groupName: 'devbox',
+        },
+        {
+            matchPackageNames: ['jetify-com/devbox'],
+            groupName: 'devbox',
+        },
+        {
+            matchPackageNames: [
+                'gitleaks/gitleaks',
+                'helm/helm',
+                'rhysd/actionlint',
+                'yannh/kubeconform',
+            ],
+            groupName: 'ci-tooling',
+        },
+        {
+            matchPackageNames: [
+                'zizmorcore/zizmor',
+                'zizmorcore/zizmor-action',
+            ],
+            groupName: 'workflow-security',
         },
     ],
     customManagers: [
@@ -37,6 +66,75 @@
                 '(?<depName>[a-z0-9./-]+):(?<currentValue>[A-Za-z0-9._-]+)@(?<currentDigest>sha256:[a-f0-9]{64})',
             ],
             datasourceTemplate: 'docker',
+        },
+        {
+            customType: 'regex',
+            description: 'Update the actionlint version used by workflow integrity checks',
+            managerFilePatterns: ['/^\\.github/workflows/ci\\.yml$/'],
+            matchStrings: [
+                'actionlint/cmd/actionlint@v(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)',
+            ],
+            depNameTemplate: 'rhysd/actionlint',
+            datasourceTemplate: 'github-releases',
+        },
+        {
+            customType: 'regex',
+            description: 'Update the Gitleaks binary selected by its action',
+            managerFilePatterns: ['/^\\.github/workflows/security\\.yml$/'],
+            matchStrings: [
+                'GITLEAKS_VERSION:\\s*(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)',
+            ],
+            depNameTemplate: 'gitleaks/gitleaks',
+            datasourceTemplate: 'github-releases',
+        },
+        {
+            customType: 'regex',
+            description: 'Update the Zizmor binary selected by its action',
+            managerFilePatterns: ['/^\\.github/workflows/security\\.yml$/'],
+            matchStrings: [
+                'persona:\\s*auditor\\s*version:\\s*(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)',
+            ],
+            depNameTemplate: 'zizmorcore/zizmor',
+            datasourceTemplate: 'github-releases',
+        },
+        {
+            customType: 'regex',
+            description: 'Update repeated Devbox bootstrap pins',
+            managerFilePatterns: [
+                '/^\\.codex/config\\.toml$/',
+                '/^\\.envrc$/',
+                '/^\\.github/actions/bootstrap/action\\.yml$/',
+                '/^\\.mcp\\.json$/',
+                '/^README\\.md$/',
+                '/^composer\\.json$/',
+                '/^devbox\\.json$/',
+                '/^tests/Feature/DevelopmentEnvironmentTest\\.php$/',
+            ],
+            matchStrings: [
+                '(?:devbox-version:\\s*|devbox/|DEVBOX_USE_VERSION=)(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)',
+            ],
+            depNameTemplate: 'jetify-com/devbox',
+            datasourceTemplate: 'github-releases',
+        },
+        {
+            customType: 'regex',
+            description: 'Update deployment CLI versions from their single source',
+            managerFilePatterns: ['/^deploy/platform/versions\\.env$/'],
+            matchStrings: [
+                'HELM_VERSION=v(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)',
+            ],
+            depNameTemplate: 'helm/helm',
+            datasourceTemplate: 'github-releases',
+        },
+        {
+            customType: 'regex',
+            description: 'Notify about kubeconform releases; checksum validation must be updated with the version',
+            managerFilePatterns: ['/^deploy/platform/versions\\.env$/'],
+            matchStrings: [
+                'KUBECONFORM_VERSION=v(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)',
+            ],
+            depNameTemplate: 'yannh/kubeconform',
+            datasourceTemplate: 'github-releases',
         },
     ],
 }
