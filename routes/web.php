@@ -73,3 +73,9 @@ Route::middleware(['auth', 'verified', 'access-author-portal'])->group(function 
 require __DIR__.'/settings.php';
 require __DIR__.'/community.php';
 require __DIR__.'/public.php';
+
+Route::middleware(['auth', 'access-author-portal'])
+    ->any('{adminPath}', static function (): never {
+        abort(404);
+    })
+    ->where('adminPath', '(?:dashboard|settings|inbox|community|user)(?:/.*)?');

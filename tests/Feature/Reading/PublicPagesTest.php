@@ -85,13 +85,15 @@ test('unknown public urls render the custom error page with a 404 status', funct
         ->assertNotFound()
         ->assertInertia(fn (AssertableInertia $page): AssertableInertia => $page
             ->component('error')
-            ->where('status', 404));
+            ->where('status', 404)
+            ->where('portal', 'public'));
 
     $this->get('/posts/not-a-real-slug')
         ->assertNotFound()
         ->assertInertia(fn (AssertableInertia $page): AssertableInertia => $page
             ->component('error')
-            ->where('status', 404));
+            ->where('status', 404)
+            ->where('portal', 'public'));
 });
 
 test('the static pages render with seo metadata', function (array $routeData): void {

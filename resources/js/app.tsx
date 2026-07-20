@@ -14,10 +14,11 @@ createInertiaApp({
 
         return title ? `${title} - ${appName}` : appName;
     },
-    layout: (name) => {
+    layout: (name, page) => {
         switch (true) {
-            case name.startsWith('public/'):
             case name === 'error':
+                return page.props.portal === 'admin' ? AppLayout : PublicLayout;
+            case name.startsWith('public/'):
                 return PublicLayout;
             case name.startsWith('auth/'):
                 return AuthLayout;

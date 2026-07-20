@@ -1,7 +1,8 @@
 import { Head, Link } from '@inertiajs/react';
-import { MoveRight, Search } from 'lucide-react';
+import { FileText, MoveRight, Search } from 'lucide-react';
+import { index as postsIndex } from '@/actions/App/Http/Admin/Controllers/PostController';
 import { Button } from '@/components/ui/button';
-import { home } from '@/routes';
+import { dashboard, home } from '@/routes';
 import { search } from '@/routes/public';
 
 const content: Record<number, { title: string; description: string }> = {
@@ -25,8 +26,14 @@ const content: Record<number, { title: string; description: string }> = {
     },
 };
 
-export default function ErrorPage({ status }: { status: number }) {
+type ErrorPageProps = {
+    status: number;
+    portal: 'admin' | 'public';
+};
+
+export default function ErrorPage({ status, portal }: ErrorPageProps) {
     const { title, description } = content[status] ?? content[500];
+    const isAdminPortal = portal === 'admin';
 
     return (
         <>
@@ -47,15 +54,21 @@ export default function ErrorPage({ status }: { status: number }) {
                 </p>
                 <div className="mt-8 flex flex-wrap justify-center gap-3">
                     <Button asChild>
-                        <Link href={home()}>
-                            Back to the blog
+                        <Link href={isAdminPortal ? dashboard() : home()}>
+                            {isAdminPortal
+                                ? 'Back to dashboard'
+                                : 'Back to the blog'}
                             <MoveRight aria-hidden />
                         </Link>
                     </Button>
                     <Button asChild variant="outline">
-                        <Link href={search()}>
-                            <Search aria-hidden />
-                            Search posts
+                        <Link href={isAdminPortal ? postsIndex() : search()}>
+                            {isAdminPortal ? (
+                                <FileText aria-hidden />
+                            ) : (
+                                <Search aria-hidden />
+                            )}
+                            {isAdminPortal ? 'Manage posts' : 'Search posts'}
                         </Link>
                     </Button>
                 </div>

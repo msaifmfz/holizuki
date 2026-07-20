@@ -6,6 +6,7 @@ namespace App\Providers;
 
 use App\Domain\Identity\Models\User;
 use App\Domain\Reading\Support\ReaderIdentity;
+use App\Http\ErrorPagePortal;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
@@ -115,7 +116,10 @@ class AppServiceProvider extends ServiceProvider
             $productionOnly = in_array($status, [500, 503], true) && ! $this->app->environment(['local', 'testing']);
 
             if ($always || $productionOnly) {
-                return $response->render('error', ['status' => $status])->withSharedData();
+                return $response->render('error', [
+                    'status' => $status,
+                    'portal' => ErrorPagePortal::resolve($response->request)->value,
+                ])->withSharedData();
             }
 
             return null;
