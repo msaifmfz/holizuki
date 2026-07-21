@@ -7,6 +7,7 @@ namespace App\Domain\Analytics\Actions;
 use App\Domain\Analytics\Models\AnalyticsDailyChannelMetric;
 use App\Domain\Analytics\Models\AnalyticsDailyPostMetric;
 use App\Domain\Analytics\Models\AnalyticsDailySiteMetric;
+use App\Domain\Analytics\Models\AnalyticsDimensionPeriodMetric;
 use App\Domain\Analytics\Models\AnalyticsPeriodSnapshot;
 use App\Domain\Analytics\Models\AnalyticsUnmappedPath;
 use App\Domain\Analytics\Models\AnalyticsWeeklyPostMetric;
@@ -105,6 +106,51 @@ class PersistAnalyticsSyncPayload
                         'previous_sign_ups', 'previous_comment_submits', 'source',
                     ],
                 );
+            }
+
+            $dimensionPeriods = [];
+            $dimensionPeriodEnds = [];
+            foreach ($payload->dimensionPeriods as $metric) {
+                $metricStartsOn = $metric['starts_on'] ?? null;
+                $metricEndsOn = $metric['ends_on'] ?? null;
+                $metricPeriodKey = $metric['period_key'] ?? null;
+                if (! is_string($metricStartsOn) || ! is_string($metricEndsOn) || ! is_string($metricPeriodKey)) {
+                    throw new UnexpectedValueException('Analytics dimension metrics require string date boundaries and a period key.');
+                }
+
+                $dimensionPeriods[$metricStartsOn.'|'.$metricEndsOn] = [$metricStartsOn, $metricEndsOn];
+                $dimensionPeriodEnds[$metricPeriodKey] = $metricEndsOn;
+            }
+            foreach ($dimensionPeriods as [$metricStartsOn, $metricEndsOn]) {
+                AnalyticsDimensionPeriodMetric::query()
+                    ->whereDate('starts_on', $metricStartsOn)
+                    ->whereDate('ends_on', $metricEndsOn)
+                    ->delete();
+            }
+
+            if ($payload->dimensionPeriods !== []) {
+                AnalyticsDimensionPeriodMetric::query()->upsert(
+                    $payload->dimensionPeriods,
+                    ['dimension_type', 'dimension_value', 'starts_on', 'ends_on'],
+                    [
+                        'position', 'period_key', 'readers', 'page_views',
+                        'previous_readers', 'previous_page_views', 'synced_at', 'updated_at',
+                    ],
+                );
+            }
+
+            // Superseded windows are never read again — the dashboard uses the
+            // exact window or the latest one per period key — so drop them.
+            // Custom windows are kept because each maps to its own request.
+            foreach ($dimensionPeriodEnds as $metricPeriodKey => $metricEndsOn) {
+                if ($metricPeriodKey === 'custom') {
+                    continue;
+                }
+
+                AnalyticsDimensionPeriodMetric::query()
+                    ->where('period_key', $metricPeriodKey)
+                    ->whereDate('ends_on', '<', $metricEndsOn)
+                    ->delete();
             }
 
             foreach ($payload->unmappedPaths as $row) {

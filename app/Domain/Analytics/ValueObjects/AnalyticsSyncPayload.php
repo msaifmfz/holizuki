@@ -13,6 +13,7 @@ final readonly class AnalyticsSyncPayload
      * @param  list<array<string, mixed>>  $weeklySite
      * @param  list<array<string, mixed>>  $weeklyPosts
      * @param  list<array<string, mixed>>  $snapshots
+     * @param  list<array<string, mixed>>  $dimensionPeriods
      * @param  list<array<string, mixed>>  $unmappedPaths
      * @param  array<string, mixed>|null  $quota
      */
@@ -23,6 +24,7 @@ final readonly class AnalyticsSyncPayload
         public array $weeklySite,
         public array $weeklyPosts,
         public array $snapshots,
+        public array $dimensionPeriods,
         public array $unmappedPaths,
         public int $requestCount,
         public int $pageCount,

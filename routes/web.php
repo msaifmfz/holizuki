@@ -17,7 +17,6 @@ use App\Http\Admin\Controllers\PostOgImageController;
 use App\Http\Admin\Controllers\PostPublishingController;
 use App\Http\Admin\Controllers\PostRevisionController;
 use App\Http\Admin\Controllers\PostTrashController;
-use App\Http\Admin\Controllers\PublishingGoalController;
 use App\Http\Admin\Controllers\TagController;
 use Illuminate\Support\Facades\Route;
 
@@ -26,11 +25,6 @@ Route::middleware(['auth', 'verified', 'access-author-portal'])->group(function 
     Route::get('dashboard/posts', [AnalyticsDashboardController::class, 'posts'])->name('dashboard.posts.index');
     Route::get('dashboard/posts/{post}', [AnalyticsDashboardController::class, 'post'])->name('dashboard.posts.show');
     Route::get('dashboard/audience', [AnalyticsDashboardController::class, 'audience'])->name('dashboard.audience');
-    Route::get('dashboard/goals', [AnalyticsDashboardController::class, 'goals'])->name('dashboard.goals');
-    Route::post('dashboard/goals', [PublishingGoalController::class, 'store'])->name('dashboard.goals.store');
-    Route::delete('dashboard/goals', [PublishingGoalController::class, 'destroy'])->name('dashboard.goals.destroy');
-    Route::post('dashboard/goals/periods/{period}/pause', [PublishingGoalController::class, 'pause'])->name('dashboard.goals.pause');
-    Route::post('dashboard/goals/periods/{period}/resume', [PublishingGoalController::class, 'resume'])->name('dashboard.goals.resume');
     Route::get('dashboard/achievements', [AnalyticsDashboardController::class, 'achievements'])->name('dashboard.achievements');
     Route::patch('dashboard/insights/{insight}', [AnalyticsInsightController::class, 'update'])->name('dashboard.insights.update');
     Route::get('dashboard/analytics/settings', [AnalyticsSettingsController::class, 'edit'])->name('dashboard.analytics.settings.edit');

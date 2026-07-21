@@ -49,6 +49,10 @@ class DashboardAnalyticsData
             $freshness = FreshnessState::Delayed;
         }
 
+        $chart = $this->chart($period);
+        $sparks = $this->sparks($chart['points']);
+        $readersComparison = $this->comparison($snapshot?->readers, $snapshot?->previous_readers);
+
         return [
             'enabled' => config()->boolean('analytics.dashboard_enabled'),
             'period' => [
@@ -61,18 +65,21 @@ class DashboardAnalyticsData
                 'state' => $freshness->value,
                 'refreshedAt' => $lastSuccessAt?->toISOString(),
             ],
+            'narrative' => $this->narrative($readersComparison, $period),
             'metrics' => [
                 'readers' => $this->metric(
                     $snapshot?->readers,
                     $snapshot?->previous_readers,
                     'Active users measured after analytics consent. This value is exact for the selected range.',
                     $freshness,
+                    $sparks['readers'],
                 ),
                 'meaningfulReaders' => $this->metric(
                     $snapshot?->meaningful_readers,
                     $snapshot?->previous_meaningful_readers,
                     'Measured readers who reached 50% and spent 30 active seconds with the article.',
                     $freshness,
+                    $sparks['meaningfulReaders'],
                 ),
                 'readerActionRate' => $this->rateMetric(
                     $snapshot?->actioning_readers,
@@ -80,15 +87,17 @@ class DashboardAnalyticsData
                     $snapshot?->previous_actioning_readers,
                     $snapshot?->previous_readers,
                     $freshness,
+                    $sparks['readerActionRate'],
                 ),
                 'pageViews' => $this->metric(
                     $snapshot?->page_views,
                     $snapshot?->previous_page_views,
                     'Consent-matched article and public-page views.',
                     $freshness,
+                    $sparks['pageViews'],
                 ),
             ],
-            'chart' => $this->chart($period),
+            'chart' => $chart,
             'snapshotReady' => $snapshot !== null,
             'snapshotFallback' => $isFallbackWindow,
             'snapshotWindow' => $snapshot === null ? null : [
@@ -98,8 +107,11 @@ class DashboardAnalyticsData
         ];
     }
 
-    /** @return array<string, mixed> */
-    private function metric(?int $value, ?int $previous, string $tooltip, FreshnessState $freshness): array
+    /**
+     * @param  list<float|int>  $spark
+     * @return array<string, mixed>
+     */
+    private function metric(?int $value, ?int $previous, string $tooltip, FreshnessState $freshness, array $spark): array
     {
         return [
             'value' => $value,
@@ -109,16 +121,21 @@ class DashboardAnalyticsData
             'source' => 'exact',
             'measured' => true,
             'freshness' => $freshness->value,
+            'spark' => $spark,
         ];
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * @param  list<float|int>  $spark
+     * @return array<string, mixed>
+     */
     private function rateMetric(
         ?int $numerator,
         ?int $denominator,
         ?int $previousNumerator,
         ?int $previousDenominator,
         FreshnessState $freshness,
+        array $spark,
     ): array {
         $value = $numerator === null || $denominator === null
             ? null
@@ -136,7 +153,46 @@ class DashboardAnalyticsData
             'measured' => true,
             'unit' => 'percent',
             'freshness' => $freshness->value,
+            'spark' => $spark,
         ];
+    }
+
+    /**
+     * @param  array{state: string, percent: float|null}  $comparison
+     */
+    private function narrative(array $comparison, DashboardPeriod $period): ?string
+    {
+        if ($comparison['state'] === 'unavailable' || $comparison['percent'] === null) {
+            return null;
+        }
+
+        $window = sprintf('the previous %d days', $period->days());
+
+        return match ($comparison['state']) {
+            'increase' => sprintf('Readers are up %s%% vs %s.', rtrim(rtrim(number_format($comparison['percent'], 1), '0'), '.'), $window),
+            'decrease' => sprintf('Readers are down %s%% vs %s.', rtrim(rtrim(number_format(abs($comparison['percent']), 1), '0'), '.'), $window),
+            default => sprintf('Readers are steady vs %s.', $window),
+        };
+    }
+
+    /**
+     * @param  list<array{date: string, readers: int, meaningfulReaders: int, actioningReaders: int, pageViews: int}>  $points
+     * @return array{readers: list<int>, meaningfulReaders: list<int>, readerActionRate: list<float>, pageViews: list<int>}
+     */
+    private function sparks(array $points): array
+    {
+        $sparks = ['readers' => [], 'meaningfulReaders' => [], 'readerActionRate' => [], 'pageViews' => []];
+
+        foreach ($points as $point) {
+            $sparks['readers'][] = $point['readers'];
+            $sparks['meaningfulReaders'][] = $point['meaningfulReaders'];
+            $sparks['readerActionRate'][] = $point['readers'] === 0
+                ? 0.0
+                : round(($point['actioningReaders'] / $point['readers']) * 100, 1);
+            $sparks['pageViews'][] = $point['pageViews'];
+        }
+
+        return $sparks;
     }
 
     /** @return array{state: string, percent: float|null} */
@@ -158,20 +214,22 @@ class DashboardAnalyticsData
         ];
     }
 
-    /** @return array{resolution: string, points: list<array{date: string, readers: int, meaningfulReaders: int}>, summary: string} */
+    /** @return array{resolution: string, points: list<array{date: string, readers: int, meaningfulReaders: int, actioningReaders: int, pageViews: int}>, summary: string} */
     private function chart(DashboardPeriod $period): array
     {
         if ($period->days() <= 90) {
             $metrics = AnalyticsDailySiteMetric::query()
                 ->whereBetween('metric_date', [$period->startsOn, $period->endsOn])
                 ->oldest('metric_date')
-                ->get(['metric_date', 'readers', 'meaningful_readers']);
+                ->get(['metric_date', 'readers', 'meaningful_readers', 'actioning_readers', 'page_views']);
             $points = [];
             foreach ($metrics as $metric) {
                 $points[] = [
                     'date' => $metric->metric_date->toDateString(),
                     'readers' => $metric->readers,
                     'meaningfulReaders' => $metric->meaningful_readers,
+                    'actioningReaders' => $metric->actioning_readers,
+                    'pageViews' => $metric->page_views,
                 ];
             }
 
@@ -185,13 +243,15 @@ class DashboardAnalyticsData
         $metrics = AnalyticsWeeklySiteMetric::query()
             ->whereBetween('week_starts_on', [$period->startsOn->startOfWeek(), $period->endsOn])
             ->oldest('week_starts_on')
-            ->get(['week_starts_on', 'readers', 'meaningful_readers']);
+            ->get(['week_starts_on', 'readers', 'meaningful_readers', 'actioning_readers', 'page_views']);
         $points = [];
         foreach ($metrics as $metric) {
             $points[] = [
                 'date' => $metric->week_starts_on->toDateString(),
                 'readers' => $metric->readers,
                 'meaningfulReaders' => $metric->meaningful_readers,
+                'actioningReaders' => $metric->actioning_readers,
+                'pageViews' => $metric->page_views,
             ];
         }
 
@@ -202,7 +262,7 @@ class DashboardAnalyticsData
         ];
     }
 
-    /** @param list<array{date: string, readers: int, meaningfulReaders: int}> $points */
+    /** @param list<array{date: string, readers: int, meaningfulReaders: int, actioningReaders: int, pageViews: int}> $points */
     private function chartSummary(array $points, string $resolution): string
     {
         if ($points === []) {

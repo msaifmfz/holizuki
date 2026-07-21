@@ -20,6 +20,13 @@ return [
     'medium_confidence_min_gap_points' => 15,
     'meaningful_reader_seconds' => 30,
     'meaningful_progress_percent' => 50,
+    'audience_dimensions' => [
+        'country' => 'country',
+        'device' => 'deviceCategory',
+        'source' => 'sessionSourceMedium',
+        'landing_page' => 'landingPage',
+    ],
+    'audience_dimension_top_n' => 10,
     'custom_dimensions' => [
         'content_key',
         'category_slug',

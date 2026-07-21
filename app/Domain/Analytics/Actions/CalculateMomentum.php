@@ -5,39 +5,32 @@ declare(strict_types=1);
 namespace App\Domain\Analytics\Actions;
 
 use App\Domain\Analytics\Enums\FreshnessState;
-use App\Domain\Analytics\Enums\GoalPeriodStatus;
 use App\Domain\Analytics\Enums\MomentumLevel;
 use App\Domain\Analytics\Models\AnalyticsMomentumSnapshot;
 use App\Domain\Analytics\Models\AnalyticsPeriodSnapshot;
 use App\Domain\Analytics\Models\AnalyticsSyncRun;
 use App\Domain\Analytics\Models\AuthorActivityEvent;
-use App\Domain\Analytics\Models\AuthorGoal;
-use App\Domain\Analytics\Models\AuthorGoalPeriod;
+use App\Domain\Analytics\Models\AuthorPublication;
 use App\Domain\Identity\Models\User;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
-use Illuminate\Contracts\Database\Query\Builder;
+use DateTimeInterface;
 
 class CalculateMomentum
 {
     /**
      * Relative component weights; the score renormalizes over the weights of
-     * whichever components are eligible for the day.
+     * whichever components are eligible for the day. Reader trends dominate
+     * so momentum reflects audience feedback rather than self-set targets.
      *
      * @var array<string, float>
      */
     private const array COMPONENT_WEIGHTS = [
-        'goal_progress' => 30.0,
-        'consistency' => 20.0,
-        'meaningful_reader_trend' => 20.0,
-        'reader_action_rate_trend' => 15.0,
-        'content_maintenance' => 15.0,
+        'consistency' => 25.0,
+        'meaningful_reader_trend' => 30.0,
+        'reader_action_rate_trend' => 25.0,
+        'content_maintenance' => 20.0,
     ];
-
-    public function __construct(
-        private readonly MaterializeGoalPeriod $materialize,
-        private readonly FinalizeGoalPeriods $finalize,
-    ) {}
 
     public function handle(User $user, ?CarbonImmutable $today = null): AnalyticsMomentumSnapshot
     {
@@ -69,25 +62,10 @@ class CalculateMomentum
             );
         }
 
-        $this->finalize->handle($today);
-        $goal = $this->activeGoal($user, $today);
-
-        if (! $goal instanceof AuthorGoal) {
-            return $this->store($user, $today, null, null, [
-                'goal' => ['status' => 'not_set', 'message' => 'Set a publishing goal to start building momentum.'],
-            ], $freshness, $lastSuccessAt);
-        }
-
-        $period = $this->materialize->handle($goal, $today);
         $components = [];
         $eligible = [];
-        $eligible['goal_progress'] = [
-            'weight' => self::COMPONENT_WEIGHTS['goal_progress'],
-            'value' => min($period->published_count / max($period->target, 1), 1),
-            'status' => 'ready',
-        ];
 
-        $consistency = $this->consistency($user);
+        $consistency = $this->consistency($user, $today);
         if ($consistency === null) {
             $components['consistency'] = ['weight' => self::COMPONENT_WEIGHTS['consistency'], 'status' => 'gathering_data'];
         } else {
@@ -178,32 +156,38 @@ class CalculateMomentum
         return max(0.0, min(1.0, ($change + 0.25) / 0.5));
     }
 
-    private function activeGoal(User $user, CarbonImmutable $today): ?AuthorGoal
+    /**
+     * Fraction of the last eight completed ISO weeks containing at least one
+     * first publication. Gathers data until the author has published and two
+     * full weeks have passed since their first publication.
+     */
+    private function consistency(User $user, CarbonImmutable $today): ?float
     {
-        return AuthorGoal::query()
-            ->where('user_id', $user->id)
-            ->whereDate('effective_from', '<=', $today->toDateString())
-            ->where(function (Builder $query) use ($today): void {
-                $query->whereNull('effective_until')->orWhereDate('effective_until', '>=', $today->toDateString());
-            })
-            ->latest('effective_from')
-            ->first();
-    }
-
-    private function consistency(User $user): ?float
-    {
-        $periods = AuthorGoalPeriod::query()
-            ->where('user_id', $user->id)
-            ->whereIn('status', [GoalPeriodStatus::Met, GoalPeriodStatus::Missed])
-            ->latest('ends_on')
-            ->limit(4)
-            ->get();
-
-        if ($periods->isEmpty()) {
+        $firstPublishedAt = AuthorPublication::query()
+            ->where('author_id', $user->id)
+            ->min('first_published_at');
+        if (! is_string($firstPublishedAt) && ! $firstPublishedAt instanceof DateTimeInterface) {
             return null;
         }
 
-        return $periods->where('status', GoalPeriodStatus::Met)->count() / $periods->count();
+        $firstPublished = $firstPublishedAt instanceof DateTimeInterface
+            ? CarbonImmutable::instance($firstPublishedAt)
+            : CarbonImmutable::parse($firstPublishedAt);
+        if ($firstPublished->greaterThan($today->subWeeks(2))) {
+            return null;
+        }
+
+        $windowStart = $today->subWeeks(8)->startOfWeek();
+        $windowEnd = $today->startOfWeek()->subSecond();
+        $publishedWeeks = AuthorPublication::query()
+            ->where('author_id', $user->id)
+            ->whereBetween('first_published_at', [$windowStart, $windowEnd])
+            ->get(['first_published_at'])
+            ->map(static fn (AuthorPublication $publication): string => CarbonImmutable::instance($publication->first_published_at)->format('o-W'))
+            ->unique()
+            ->count();
+
+        return min($publishedWeeks / 8, 1.0);
     }
 
     private function isNewBlog(

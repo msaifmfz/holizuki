@@ -46,12 +46,12 @@ export default function Privacy() {
                         </p>
                         <p>
                             Google event data is retained for 14 months. Local
-                            aggregate reports, goals, and achieved milestones
-                            may be kept indefinitely. Both accept and decline
-                            choices expire after {analytics.consentDays} days.
-                            You can withdraw at any time; withdrawal stops
-                            further events, removes known GA cookies, and
-                            reloads the page.
+                            aggregate reports and achieved milestones may be
+                            kept indefinitely. Both accept and decline choices
+                            expire after {analytics.consentDays} days. You can
+                            withdraw at any time; withdrawal stops further
+                            events, removes known GA cookies, and reloads the
+                            page.
                         </p>
                         <button
                             type="button"

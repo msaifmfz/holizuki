@@ -123,7 +123,6 @@ it('renders every analytics and community workspace across responsive themes', f
         '/dashboard/posts',
         "/dashboard/posts/{$post->id}",
         '/dashboard/audience',
-        '/dashboard/goals',
         '/dashboard/achievements',
         '/dashboard/analytics/settings',
         '/community/comments',

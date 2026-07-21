@@ -13,7 +13,7 @@ class TrackAuthorProductEvent
 {
     /** @var list<string> */
     private const array ALLOWED_EVENTS = [
-        'dashboard_open', 'period_change', 'goal_set', 'insight_action',
+        'dashboard_open', 'period_change', 'insight_action',
         'editor_open', 'editor_save', 'new_post_start',
     ];
 

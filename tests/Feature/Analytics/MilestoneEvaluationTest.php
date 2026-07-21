@@ -4,12 +4,8 @@ declare(strict_types=1);
 
 use App\Domain\Analytics\Actions\EvaluateCommunityMilestones;
 use App\Domain\Analytics\Actions\EvaluateMilestones;
-use App\Domain\Analytics\Enums\GoalCadence;
-use App\Domain\Analytics\Enums\GoalPeriodStatus;
 use App\Domain\Analytics\Models\AnalyticsMilestone;
 use App\Domain\Analytics\Models\AnalyticsPeriodSnapshot;
-use App\Domain\Analytics\Models\AuthorGoal;
-use App\Domain\Analytics\Models\AuthorGoalPeriod;
 use App\Domain\Analytics\Models\AuthorPublication;
 use App\Domain\Community\Events\CommentApproved;
 use App\Domain\Community\Events\SubscriberConfirmed;
@@ -33,21 +29,6 @@ it('records publishing audience engagement community and longevity milestones ex
         AuthorPublication::factory()->create([
             'author_id' => $user,
             'first_published_at' => $date,
-        ]);
-    }
-
-    $goal = AuthorGoal::factory()->create([
-        'user_id' => $user,
-        'cadence' => GoalCadence::Monthly,
-        'effective_from' => '2025-07-01',
-    ]);
-    foreach (range(0, 11) as $offset) {
-        AuthorGoalPeriod::factory()->create([
-            'goal_id' => $goal,
-            'user_id' => $user,
-            'starts_on' => CarbonImmutable::parse('2025-07-01')->addMonths($offset)->startOfMonth(),
-            'ends_on' => CarbonImmutable::parse('2025-07-01')->addMonths($offset)->endOfMonth(),
-            'status' => GoalPeriodStatus::Met,
         ]);
     }
 
@@ -110,9 +91,6 @@ it('records publishing audience engagement community and longevity milestones ex
     expect(AnalyticsMilestone::query()->count())->toBe($firstCount)
         ->and(AnalyticsMilestone::query()->where('code', 'published_1_posts')->exists())->toBeTrue()
         ->and(AnalyticsMilestone::query()->where('code', 'published_5_posts')->exists())->toBeTrue()
-        ->and(AnalyticsMilestone::query()->where('code', 'first_monthly_goal')->exists())->toBeTrue()
-        ->and(AnalyticsMilestone::query()->where('code', 'goal_streak_4')->exists())->toBeTrue()
-        ->and(AnalyticsMilestone::query()->where('code', 'goal_streak_12')->exists())->toBeTrue()
         ->and(AnalyticsMilestone::query()->where('code', 'measured_readers_1000')->exists())->toBeTrue()
         ->and(AnalyticsMilestone::query()->where('code', 'meaningful_readers_100')->exists())->toBeTrue()
         ->and(AnalyticsMilestone::query()->where('code', 'first_50_percent_meaningful_rate')->exists())->toBeTrue()

@@ -9,13 +9,11 @@ import {
     MessageSquare,
     Settings2,
     Tags,
-    Target,
     UsersRound,
 } from 'lucide-react';
 import {
     achievements,
     audience,
-    goals,
     posts as analyticsPosts,
 } from '@/actions/App/Http/Admin/Controllers/AnalyticsDashboardController';
 import { edit as analyticsSettings } from '@/actions/App/Http/Admin/Controllers/AnalyticsSettingsController';
@@ -60,11 +58,6 @@ const mainNavItems: NavItem[] = [
         title: 'Audience',
         href: audience(),
         icon: UsersRound,
-    },
-    {
-        title: 'Goals',
-        href: goals(),
-        icon: Target,
     },
     {
         title: 'Achievements',

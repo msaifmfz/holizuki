@@ -15,6 +15,7 @@ use App\Domain\Analytics\Gateways\GoogleAnalyticsClientFactory;
 use App\Domain\Analytics\Jobs\SyncAnalyticsMonth;
 use App\Domain\Analytics\Mail\AnalyticsSyncFailureMail;
 use App\Domain\Analytics\Models\AnalyticsDailySiteMetric;
+use App\Domain\Analytics\Models\AnalyticsDimensionPeriodMetric;
 use App\Domain\Analytics\Models\AnalyticsPeriodSnapshot;
 use App\Domain\Analytics\Models\AnalyticsSyncRun;
 use App\Domain\Analytics\Models\AnalyticsUnmappedPath;
@@ -265,6 +266,56 @@ it('requests complete ISO weeks when a sync range crosses a month boundary', fun
         ))))->toBe(['2026-07-27|2026-08-02']);
 });
 
+it('stores top audience dimension values with previous-window comparisons and stays idempotent', function (): void {
+    CarbonImmutable::setTestNow('2026-07-19 12:00:00');
+    config()->set('analytics.audience_dimension_top_n', 2);
+    app()->bind(AnalyticsReportingGateway::class, fn (): AnalyticsReportingGateway => audienceDimensionGateway());
+    $staleStandard = AnalyticsDimensionPeriodMetric::factory()->create([
+        'period_key' => '7d',
+        'starts_on' => '2026-07-06',
+        'ends_on' => '2026-07-12',
+    ]);
+    $staleCustom = AnalyticsDimensionPeriodMetric::factory()->create([
+        'dimension_value' => 'Japan',
+        'period_key' => 'custom',
+        'starts_on' => '2026-07-06',
+        'ends_on' => '2026-07-12',
+    ]);
+
+    $sync = resolve(SyncAnalyticsRange::class);
+    $sync->handle(CarbonImmutable::parse('2026-07-18'), CarbonImmutable::parse('2026-07-19'), 'test');
+    $sync->handle(CarbonImmutable::parse('2026-07-18'), CarbonImmutable::parse('2026-07-19'), 'test');
+
+    $countries = AnalyticsDimensionPeriodMetric::query()
+        ->where('dimension_type', 'country')
+        ->where('period_key', '7d')
+        ->orderBy('position')
+        ->get();
+
+    expect($countries->pluck('dimension_value')->all())->toBe(['United States', 'Japan', '(other)'])
+        ->and($countries[0]->readers)->toBe(40)
+        ->and($countries[0]->page_views)->toBe(60)
+        ->and($countries[0]->previous_readers)->toBe(25)
+        ->and($countries[1]->previous_readers)->toBe(0)
+        ->and($countries[2]->readers)->toBe(9)
+        ->and($countries[2]->previous_readers)->toBe(7)
+        ->and(AnalyticsDimensionPeriodMetric::query()
+            ->where('dimension_type', 'device')
+            ->where('period_key', '7d')
+            ->count())->toBe(2)
+        ->and(AnalyticsDimensionPeriodMetric::query()
+            ->where('dimension_value', '(not set)')
+            ->exists())->toBeFalse()
+        ->and(AnalyticsDimensionPeriodMetric::query()
+            ->where('dimension_type', 'country')
+            ->where('period_key', 'lifetime')
+            ->get()
+            ->every(fn (AnalyticsDimensionPeriodMetric $row): bool => $row->previous_readers === null
+                && $row->previous_page_views === null))->toBeTrue()
+        ->and($staleStandard->fresh())->toBeNull()
+        ->and($staleCustom->fresh())->not->toBeNull();
+});
+
 it('never overwrites existing values when a report fails', function (): void {
     AnalyticsDailySiteMetric::factory()->create([
         'metric_date' => '2026-07-19',
@@ -406,6 +457,52 @@ function exactReadersGateway(): AnalyticsReportingGateway
             }
 
             return [];
+        }
+    };
+}
+
+function audienceDimensionGateway(): AnalyticsReportingGateway
+{
+    return new class implements AnalyticsReportingGateway
+    {
+        public function report(AnalyticsReportRequest $request): AnalyticsReportPage
+        {
+            $isCurrentWindow = $request->endsOn === '2026-07-19';
+            $rows = match ($request->dimensions) {
+                ['country'] => $isCurrentWindow
+                    ? [
+                        new AnalyticsReportRow(['country' => 'United States'], ['activeUsers' => 40, 'screenPageViews' => 60]),
+                        new AnalyticsReportRow(['country' => 'Japan'], ['activeUsers' => 10, 'screenPageViews' => 15]),
+                        new AnalyticsReportRow(['country' => 'Germany'], ['activeUsers' => 5, 'screenPageViews' => 7]),
+                        new AnalyticsReportRow(['country' => 'France'], ['activeUsers' => 4, 'screenPageViews' => 5]),
+                        new AnalyticsReportRow(['country' => '(not set)'], ['activeUsers' => 3, 'screenPageViews' => 3]),
+                    ]
+                    : [
+                        new AnalyticsReportRow(['country' => 'United States'], ['activeUsers' => 25, 'screenPageViews' => 40]),
+                        new AnalyticsReportRow(['country' => 'Germany'], ['activeUsers' => 4, 'screenPageViews' => 5]),
+                        new AnalyticsReportRow(['country' => 'Brazil'], ['activeUsers' => 3, 'screenPageViews' => 4]),
+                    ],
+                ['deviceCategory'] => $isCurrentWindow
+                    ? [
+                        new AnalyticsReportRow(['deviceCategory' => 'mobile'], ['activeUsers' => 30, 'screenPageViews' => 45]),
+                        new AnalyticsReportRow(['deviceCategory' => 'desktop'], ['activeUsers' => 20, 'screenPageViews' => 32]),
+                    ]
+                    : [],
+                ['sessionSourceMedium'] => $isCurrentWindow
+                    ? [new AnalyticsReportRow(['sessionSourceMedium' => 'google / organic'], ['activeUsers' => 12, 'screenPageViews' => 18])]
+                    : [],
+                ['landingPage'] => $isCurrentWindow
+                    ? [new AnalyticsReportRow(['landingPage' => '/posts/hello'], ['activeUsers' => 8, 'screenPageViews' => 8])]
+                    : [],
+                default => [],
+            };
+
+            return new AnalyticsReportPage($rows, count($rows));
+        }
+
+        public function realtime(AnalyticsReportRequest $request): AnalyticsReportPage
+        {
+            throw new RuntimeException('Not used.');
         }
     };
 }

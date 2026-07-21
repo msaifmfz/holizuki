@@ -31,6 +31,29 @@ describe('dashboard analytics components', () => {
         );
     });
 
+    it('renders a sparkline only when a series with multiple points exists', () => {
+        const withSpark: DashboardMetric = {
+            ...metric(10),
+            comparison: { state: 'increase', percent: 25 },
+            spark: [2, 4, 10],
+        };
+        const { rerender } = render(
+            <MetricCard title="Readers" metric={withSpark} />,
+        );
+
+        expect(screen.getByTestId('metric-sparkline')).toBeInTheDocument();
+        expect(document.querySelector('svg polyline')).not.toBeNull();
+
+        rerender(
+            <MetricCard
+                title="Readers"
+                metric={{ ...metric(10), spark: [] }}
+            />,
+        );
+
+        expect(screen.queryByTestId('metric-sparkline')).toBeNull();
+    });
+
     it('renders an accessible dependency-free chart and textual summary', () => {
         render(
             <AnalyticsChart

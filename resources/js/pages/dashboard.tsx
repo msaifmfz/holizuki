@@ -23,6 +23,7 @@ type Props = {
     enabled: boolean;
     period: { key: string; from: string; to: string; days: number };
     freshness: { state: string; refreshedAt: string | null };
+    narrative: string | null;
     metrics: {
         readers: DashboardMetric;
         meaningfulReaders: DashboardMetric;
@@ -67,6 +68,7 @@ export default function Dashboard({
     enabled,
     period,
     freshness,
+    narrative,
     metrics,
     chart,
     snapshotFallback,
@@ -93,6 +95,11 @@ export default function Dashboard({
                                 ? ` · ${new Date(freshness.refreshedAt).toLocaleString()}`
                                 : ''}
                         </p>
+                        {enabled && narrative && (
+                            <p className="mt-1 text-sm font-medium">
+                                {narrative}
+                            </p>
+                        )}
                     </div>
                     <div className="flex gap-2">
                         {enabled && (
@@ -151,7 +158,7 @@ export default function Dashboard({
                     <Card className="border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
                         <CardContent className="py-5 text-sm">
                             Analytics dashboard rollout is disabled. Community
-                            totals and publishing goals remain available.
+                            totals remain available.
                         </CardContent>
                     </Card>
                 )}
@@ -198,9 +205,9 @@ export default function Dashboard({
                                     >
                                         {momentum?.score == null ? (
                                             <p className="text-sm text-muted-foreground">
-                                                Set a publishing goal to reveal
-                                                your momentum score. Audience
-                                                signals will join once enough
+                                                Momentum builds from your
+                                                publishing rhythm and reader
+                                                trends. It appears once enough
                                                 measured history exists.
                                             </p>
                                         ) : (

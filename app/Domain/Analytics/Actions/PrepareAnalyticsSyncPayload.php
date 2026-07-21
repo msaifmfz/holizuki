@@ -123,13 +123,16 @@ class PrepareAnalyticsSyncPayload
             ]), $set->metrics, $syncedAt);
         }
 
+        $periods = $this->periods($startsOn, $endsOn, $includeCustomPeriod);
+
         return new AnalyticsSyncPayload(
             dailySite: $dailySite,
             dailyPosts: $dailyPosts,
             dailyChannels: $dailyChannels,
             weeklySite: $weeklySite,
             weeklyPosts: $weeklyPosts,
-            snapshots: $this->snapshots($startsOn, $endsOn, $syncedAt, $includeCustomPeriod),
+            snapshots: $this->snapshots($periods, $syncedAt),
+            dimensionPeriods: $this->dimensionMetrics($periods, $syncedAt),
             unmappedPaths: $this->unmappedPaths($start, $end),
             requestCount: $this->reports->requestCount,
             pageCount: $this->reports->pageCount,
@@ -139,21 +142,15 @@ class PrepareAnalyticsSyncPayload
     }
 
     /**
+     * @param  array<string, array{0: CarbonImmutable, 1: CarbonImmutable}>  $periods
      * @return list<array<string, mixed>>
      */
-    private function snapshots(
-        CarbonImmutable $requestedStart,
-        CarbonImmutable $requestedEnd,
-        DateTimeInterface $syncedAt,
-        bool $includeCustomPeriod,
-    ): array {
-        $periods = $this->periods($requestedStart, $requestedEnd, $includeCustomPeriod);
+    private function snapshots(array $periods, DateTimeInterface $syncedAt): array
+    {
         $snapshots = [];
 
         foreach ($periods as $periodKey => [$startsOn, $endsOn]) {
-            $days = $startsOn->diffInDays($endsOn) + 1;
-            $comparisonEnd = $startsOn->subDay();
-            $comparisonStart = $comparisonEnd->subDays($days - 1);
+            [$comparisonStart, $comparisonEnd] = $this->comparisonWindow($startsOn, $endsOn);
 
             foreach ([
                 ['site', [], 'site'],
@@ -201,6 +198,118 @@ class PrepareAnalyticsSyncPayload
         }
 
         return $snapshots;
+    }
+
+    /**
+     * Audience breakdowns per dimension (country, device, source, landing page)
+     * limited to the top-N values by readers, with the remainder folded into a
+     * synthetic `(other)` row. Summing readers across values over-counts users
+     * who span several values, which is acceptable for an "everything else" bar.
+     *
+     * @param  array<string, array{0: CarbonImmutable, 1: CarbonImmutable}>  $periods
+     * @return list<array<string, mixed>>
+     */
+    private function dimensionMetrics(array $periods, DateTimeInterface $syncedAt): array
+    {
+        /** @var array<string, string> $dimensions */
+        $dimensions = config()->array('analytics.audience_dimensions');
+        $topN = config()->integer('analytics.audience_dimension_top_n');
+        $rows = [];
+
+        foreach ($periods as $periodKey => [$startsOn, $endsOn]) {
+            [$comparisonStart, $comparisonEnd] = $this->comparisonWindow($startsOn, $endsOn);
+            // A lifetime window has no preceding data by construction, so its
+            // comparison stays null instead of issuing guaranteed-empty reports.
+            $comparable = $periodKey !== 'lifetime';
+
+            foreach ($dimensions as $dimensionType => $gaDimension) {
+                $current = $this->dimensionReaders($startsOn, $endsOn, $gaDimension);
+                $previous = $comparable
+                    ? $this->dimensionReaders($comparisonStart, $comparisonEnd, $gaDimension)
+                    : [];
+                $hasPrevious = $previous !== [];
+                uasort($current, static fn (array $a, array $b): int => $b['readers'] <=> $a['readers']);
+
+                $top = array_slice($current, 0, $topN, true);
+                $rest = array_slice($current, $topN, null, true);
+                $base = [
+                    'dimension_type' => $dimensionType,
+                    'period_key' => $periodKey,
+                    'starts_on' => $startsOn->toDateString(),
+                    'ends_on' => $endsOn->toDateString(),
+                ];
+                $position = 0;
+
+                foreach ($top as $key => $metrics) {
+                    $rows[] = $this->row(array_merge($base, [
+                        'dimension_value' => Str::limit($metrics['value'], 128, ''),
+                        'position' => ++$position,
+                        'previous_readers' => $hasPrevious ? ($previous[$key]['readers'] ?? 0) : null,
+                        'previous_page_views' => $hasPrevious ? ($previous[$key]['page_views'] ?? 0) : null,
+                    ]), ['readers' => $metrics['readers'], 'page_views' => $metrics['page_views']], $syncedAt);
+                }
+
+                if ($rest !== []) {
+                    $previousRest = array_diff_key($previous, $top);
+                    $rows[] = $this->row(array_merge($base, [
+                        'dimension_value' => '(other)',
+                        'position' => ++$position,
+                        'previous_readers' => $hasPrevious ? array_sum(array_column($previousRest, 'readers')) : null,
+                        'previous_page_views' => $hasPrevious ? array_sum(array_column($previousRest, 'page_views')) : null,
+                    ]), [
+                        'readers' => array_sum(array_column($rest, 'readers')),
+                        'page_views' => array_sum(array_column($rest, 'page_views')),
+                    ], $syncedAt);
+                }
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The equally long window immediately preceding the given one.
+     *
+     * @return array{0: CarbonImmutable, 1: CarbonImmutable}
+     */
+    private function comparisonWindow(CarbonImmutable $startsOn, CarbonImmutable $endsOn): array
+    {
+        $days = $startsOn->diffInDays($endsOn) + 1;
+        $comparisonEnd = $startsOn->subDay();
+
+        return [$comparisonEnd->subDays($days - 1), $comparisonEnd];
+    }
+
+    /** @return array<array-key, array{value: string, readers: int, page_views: int}> */
+    private function dimensionReaders(
+        CarbonImmutable $startsOn,
+        CarbonImmutable $endsOn,
+        string $gaDimension,
+    ): array {
+        $sets = [];
+
+        foreach ($this->reports->raw(
+            $startsOn->toDateString(),
+            $endsOn->toDateString(),
+            [$gaDimension],
+            ['activeUsers', 'screenPageViews'],
+        ) as $row) {
+            $value = $row->dimensions[$gaDimension] ?? '';
+            if ($value === '') {
+                continue;
+            }
+            if ($value === '(not set)') {
+                continue;
+            }
+
+            $sets[$value] = [
+                'value' => $value,
+                'readers' => (int) round($row->metrics['activeUsers'] ?? 0),
+                'page_views' => (int) round($row->metrics['screenPageViews'] ?? 0),
+            ];
+        }
+
+        return $sets;
     }
 
     /** @return array<string, array{0: CarbonImmutable, 1: CarbonImmutable}> */

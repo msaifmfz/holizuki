@@ -6,7 +6,6 @@ namespace App\Domain\Analytics\Actions;
 
 use App\Domain\Analytics\Models\AnalyticsMilestone;
 use App\Domain\Analytics\Models\AnalyticsPeriodSnapshot;
-use App\Domain\Analytics\Models\AuthorGoal;
 use App\Domain\Analytics\Models\AuthorPublication;
 use App\Domain\Identity\Models\User;
 use App\Domain\Publishing\Models\Post;
@@ -24,15 +23,10 @@ class EvaluateMilestones
     private const array PUBLICATION_THRESHOLDS = [1, 5, 10, 25, 50, 100];
 
     /** @var list<int> */
-    private const array STREAK_THRESHOLDS = [4, 12];
-
-    /** @var list<int> */
     private const array READER_THRESHOLDS = [1, 100, 1000, 10000];
 
     /** @var list<int> */
     private const array MEANINGFUL_READER_THRESHOLDS = [1, 100, 1000];
-
-    public function __construct(private readonly GoalStreak $goalStreak) {}
 
     /** @return Collection<int, AnalyticsMilestone> */
     public function handle(User $user): Collection
@@ -43,17 +37,6 @@ class EvaluateMilestones
         foreach (self::PUBLICATION_THRESHOLDS as $threshold) {
             if ($published >= $threshold) {
                 $achieved[] = $this->record($user, "published_{$threshold}_posts", 'site', ['posts' => $published]);
-            }
-        }
-
-        if (AuthorGoal::query()->where('user_id', $user->id)->where('cadence', 'monthly')->exists()) {
-            $achieved[] = $this->record($user, 'first_monthly_goal', 'site');
-        }
-
-        $streak = $this->goalStreak->handle($user);
-        foreach (self::STREAK_THRESHOLDS as $threshold) {
-            if ($streak >= $threshold) {
-                $achieved[] = $this->record($user, "goal_streak_{$threshold}", 'site', ['periods' => $streak]);
             }
         }
 

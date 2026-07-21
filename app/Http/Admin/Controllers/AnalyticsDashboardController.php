@@ -9,6 +9,7 @@ use App\Domain\Analytics\Actions\DashboardAnalyticsData;
 use App\Domain\Analytics\Actions\RequestCustomSnapshot;
 use App\Domain\Analytics\Actions\TrackAuthorProductEvent;
 use App\Domain\Analytics\Models\AnalyticsDailyPostMetric;
+use App\Domain\Analytics\Models\AnalyticsDimensionPeriodMetric;
 use App\Domain\Analytics\Models\AnalyticsInsight;
 use App\Domain\Analytics\Models\AnalyticsMilestone;
 use App\Domain\Analytics\Models\AnalyticsMomentumSnapshot;
@@ -16,8 +17,6 @@ use App\Domain\Analytics\Models\AnalyticsPeriodSnapshot;
 use App\Domain\Analytics\Models\AnalyticsSetting;
 use App\Domain\Analytics\Models\AnalyticsSnapshotPreparation;
 use App\Domain\Analytics\Models\AnalyticsWeeklyPostMetric;
-use App\Domain\Analytics\Models\AuthorGoal;
-use App\Domain\Analytics\Models\AuthorGoalPeriod;
 use App\Domain\Analytics\Models\AuthorProductEvent;
 use App\Domain\Analytics\ValueObjects\DashboardPeriod;
 use App\Domain\Community\Enums\CommentStatus;
@@ -38,8 +37,8 @@ use Inertia\Response;
 
 /**
  * Post, audience, and realtime analytics are site-wide with no per-author
- * scoping (single-administrator assumption); only goals, achievements,
- * momentum, and recommendations are scoped to the requesting administrator.
+ * scoping (single-administrator assumption); only achievements, momentum,
+ * and recommendations are scoped to the requesting administrator.
  */
 class AnalyticsDashboardController extends Controller
 {
@@ -118,34 +117,51 @@ class AnalyticsDashboardController extends Controller
         return Inertia::render('dashboard/audience', [
             ...$data->handle($period),
             'channels' => $channels,
+            'countries' => Inertia::defer(fn (): array => $this->dimensionRows('country', $period)),
+            'devices' => Inertia::defer(fn (): array => $this->dimensionRows('device', $period)),
+            'sources' => Inertia::defer(fn (): array => $this->dimensionRows('source', $period)),
+            'landingPages' => Inertia::defer(fn (): array => $this->dimensionRows('landing_page', $period)),
         ]);
     }
 
-    public function goals(DashboardPeriodRequest $request): Response
+    /** @return list<array{value: string, readers: int, pageViews: int, previousReaders: int|null, share: float}> */
+    private function dimensionRows(string $dimensionType, DashboardPeriod $period): array
     {
-        $user = $this->administrator($request->user());
-        $goals = AuthorGoal::query()
-            ->where('user_id', $user->id)
-            ->with('periods')
-            ->latest('effective_from')
-            ->get()
-            ->map(fn (AuthorGoal $goal): array => [
-                'id' => $goal->id,
-                'cadence' => $goal->cadence->value,
-                'target' => $goal->target,
-                'effectiveFrom' => $goal->effective_from->toDateString(),
-                'effectiveUntil' => $goal->effective_until?->toDateString(),
-                'periods' => $goal->periods->sortByDesc('starts_on')->take(24)->map(fn (AuthorGoalPeriod $period): array => [
-                    'id' => $period->id,
-                    'startsOn' => $period->starts_on->toDateString(),
-                    'endsOn' => $period->ends_on->toDateString(),
-                    'target' => $period->target,
-                    'published' => $period->published_count,
-                    'status' => $period->status->value,
-                ])->all(),
-            ])->all();
+        $rows = AnalyticsDimensionPeriodMetric::query()
+            ->where('dimension_type', $dimensionType)
+            ->whereDate('starts_on', $period->startsOn->toDateString())
+            ->whereDate('ends_on', $period->endsOn->toDateString())
+            ->orderBy('position')
+            ->get();
 
-        return Inertia::render('dashboard/goals', ['goals' => $goals]);
+        // Standard windows always end today, so between midnight and the next
+        // sync no exact rows exist yet; mirror the snapshot fallback and show
+        // the latest completed window for the same period key.
+        if ($rows->isEmpty() && $period->key !== 'custom') {
+            $latest = AnalyticsDimensionPeriodMetric::query()
+                ->where('dimension_type', $dimensionType)
+                ->where('period_key', $period->key)
+                ->latest('ends_on')
+                ->first();
+            if ($latest !== null) {
+                $rows = AnalyticsDimensionPeriodMetric::query()
+                    ->where('dimension_type', $dimensionType)
+                    ->where('period_key', $period->key)
+                    ->whereDate('ends_on', $latest->ends_on->toDateString())
+                    ->orderBy('position')
+                    ->get();
+            }
+        }
+
+        $totalReaders = $rows->sum(fn (AnalyticsDimensionPeriodMetric $row): int => $row->readers);
+
+        return array_values($rows->map(fn (AnalyticsDimensionPeriodMetric $row): array => [
+            'value' => $row->dimension_value,
+            'readers' => $row->readers,
+            'pageViews' => $row->page_views,
+            'previousReaders' => $row->previous_readers,
+            'share' => $totalReaders === 0 ? 0.0 : round(($row->readers / $totalReaders) * 100, 1),
+        ])->all());
     }
 
     public function achievements(DashboardPeriodRequest $request): Response

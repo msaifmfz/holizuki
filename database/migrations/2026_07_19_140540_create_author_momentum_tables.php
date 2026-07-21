@@ -19,45 +19,6 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        Schema::create('author_goals', function (Blueprint $table): void {
-            $table->id();
-            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
-            $table->enum('cadence', ['weekly', 'monthly']);
-            $table->unsignedTinyInteger('target');
-            $table->date('effective_from');
-            $table->date('effective_until')->nullable();
-            $table->timestamp('disabled_at')->nullable();
-            $table->timestamps();
-
-            $table->unique(['user_id', 'effective_from']);
-        });
-
-        Schema::create('author_goal_periods', function (Blueprint $table): void {
-            $table->id();
-            $table->foreignId('goal_id')->constrained('author_goals')->cascadeOnDelete();
-            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
-            $table->date('starts_on');
-            $table->date('ends_on');
-            $table->unsignedTinyInteger('target');
-            $table->unsignedTinyInteger('published_count')->default(0);
-            $table->enum('status', ['scheduled', 'active', 'met', 'missed', 'paused'])->default('scheduled')->index();
-            $table->timestamp('finalized_at')->nullable();
-            $table->timestamps();
-
-            $table->unique(['user_id', 'starts_on', 'ends_on']);
-        });
-
-        Schema::create('author_goal_pauses', function (Blueprint $table): void {
-            $table->id();
-            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
-            $table->date('starts_on');
-            $table->date('ends_on');
-            $table->string('reason', 255)->nullable();
-            $table->timestamps();
-
-            $table->unique(['user_id', 'starts_on', 'ends_on']);
-        });
-
         Schema::create('analytics_momentum_snapshots', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
@@ -146,9 +107,6 @@ return new class extends Migration
         Schema::dropIfExists('analytics_insights');
         Schema::dropIfExists('analytics_milestones');
         Schema::dropIfExists('analytics_momentum_snapshots');
-        Schema::dropIfExists('author_goal_pauses');
-        Schema::dropIfExists('author_goal_periods');
-        Schema::dropIfExists('author_goals');
         Schema::dropIfExists('author_publications');
     }
 };

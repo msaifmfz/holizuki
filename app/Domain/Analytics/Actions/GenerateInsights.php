@@ -11,13 +11,13 @@ use App\Domain\Analytics\Models\AnalyticsInsight;
 use App\Domain\Analytics\Models\AnalyticsPeriodSnapshot;
 use App\Domain\Analytics\Models\AnalyticsSetting;
 use App\Domain\Analytics\Models\AnalyticsSyncRun;
-use App\Domain\Analytics\Models\AuthorGoal;
-use App\Domain\Analytics\Models\AuthorGoalPeriod;
+use App\Domain\Analytics\Models\AuthorPublication;
 use App\Domain\Identity\Models\User;
 use App\Domain\Publishing\Enums\PostStatus;
 use App\Domain\Publishing\Models\Post;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use DateTimeInterface;
 use Illuminate\Contracts\Database\Query\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
@@ -411,36 +411,31 @@ class GenerateInsights
     /** @return InsightCandidate|null */
     private function publishNextCandidate(User $user, CarbonImmutable $today): ?array
     {
-        $goal = AuthorGoal::query()
-            ->where('user_id', $user->id)
-            ->whereDate('effective_from', '<=', $today)
-            ->where(fn (Builder $query) => $query->whereNull('effective_until')->orWhereDate('effective_until', '>=', $today))
-            ->latest('effective_from')
-            ->first();
-        if ($goal === null) {
+        $lastPublishedAt = AuthorPublication::query()
+            ->where('author_id', $user->id)
+            ->max('first_published_at');
+        if (! is_string($lastPublishedAt) && ! $lastPublishedAt instanceof DateTimeInterface) {
             return null;
         }
 
-        $period = AuthorGoalPeriod::query()
-            ->where('goal_id', $goal->id)
-            ->whereDate('starts_on', '<=', $today)
-            ->whereDate('ends_on', '>=', $today)
-            ->first();
+        $lastPublished = $lastPublishedAt instanceof DateTimeInterface
+            ? CarbonImmutable::instance($lastPublishedAt)
+            : CarbonImmutable::parse($lastPublishedAt);
+        $daysSince = (int) $lastPublished->startOfDay()->diffInDays($today->startOfDay());
+        if ($daysSince <= 14) {
+            return null;
+        }
+
         $draft = Post::query()->where('status', PostStatus::Draft)->latest('updated_at')->first();
-
-        if ($period === null || $draft === null || $period->published_count >= $period->target) {
+        if ($draft === null) {
             return null;
         }
-
-        $remaining = $period->target - $period->published_count;
-        $daysRemaining = (int) $today->diffInDays($period->ends_on) + 1;
-        $atRisk = $remaining >= $daysRemaining;
 
         return $this->candidate(
-            'publish_next', $draft, InsightConfidence::High, $atRisk ? 0 : 4,
-            ['published' => $period->published_count, 'target' => $period->target, 'days_remaining' => $daysRemaining],
-            $atRisk ? 'Your active publishing goal is at risk.' : 'Your active publishing goal is still incomplete.',
-            'Continue the most recently updated draft and publish it before this goal period ends.',
+            'publish_next', $draft, InsightConfidence::High, 4,
+            ['days_since_last_publication' => $daysSince],
+            sprintf('It has been %d days since your last publication.', $daysSince),
+            'Continue the most recently updated draft and publish it to keep your reader trends growing.',
         );
     }
 
@@ -595,7 +590,7 @@ class GenerateInsights
             'refresh_older_article' => $this->numericEvidence($evidence, 'decline_percent'),
             'expand_rising_topic' => $this->numericEvidence($evidence, 'seven_day_growth_percent'),
             'improve_structure' => $this->difference($evidence, 'median_progress_90_rate', 'progress_90_rate'),
-            'publish_next' => $this->numericEvidence($evidence, 'target') - $this->numericEvidence($evidence, 'published'),
+            'publish_next' => $this->numericEvidence($evidence, 'days_since_last_publication'),
             default => 0.0,
         };
     }

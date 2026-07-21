@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 use App\Domain\Analytics\Actions\DismissInsight;
 use App\Domain\Analytics\Actions\GenerateInsights;
-use App\Domain\Analytics\Enums\GoalPeriodStatus;
 use App\Domain\Analytics\Enums\InsightStatus;
 use App\Domain\Analytics\Models\AnalyticsInsight;
 use App\Domain\Analytics\Models\AnalyticsPeriodSnapshot;
 use App\Domain\Analytics\Models\AnalyticsSyncRun;
-use App\Domain\Analytics\Models\AuthorGoal;
-use App\Domain\Analytics\Models\AuthorGoalPeriod;
+use App\Domain\Analytics\Models\AuthorPublication;
 use App\Domain\Identity\Models\User;
 use App\Domain\Publishing\Models\Post;
 use Carbon\CarbonImmutable;
@@ -23,21 +21,11 @@ beforeEach(function (): void {
     CarbonImmutable::setTestNow('2026-07-19 12:00:00');
 });
 
-it('prioritizes a goal-at-risk draft ahead of all evidence rules', function (): void {
+it('nudges publishing again only after fourteen quiet days when a draft exists', function (): void {
     $user = User::factory()->create();
-    $goal = AuthorGoal::factory()->create([
-        'user_id' => $user,
-        'effective_from' => '2026-07-13',
-        'target' => 3,
-    ]);
-    AuthorGoalPeriod::factory()->create([
-        'goal_id' => $goal,
-        'user_id' => $user,
-        'starts_on' => '2026-07-13',
-        'ends_on' => '2026-07-19',
-        'target' => 3,
-        'published_count' => 0,
-        'status' => GoalPeriodStatus::Active,
+    AuthorPublication::factory()->create([
+        'author_id' => $user,
+        'first_published_at' => '2026-06-29 09:00:00',
     ]);
     $draft = Post::factory()->create(['author_id' => $user, 'updated_at' => now()]);
 
@@ -45,8 +33,18 @@ it('prioritizes a goal-at-risk draft ahead of all evidence rules', function (): 
 
     $insight = AnalyticsInsight::query()->where('rule_id', 'publish_next')->sole();
     expect($insight->post_id)->toBe($draft->id)
-        ->and($insight->evidence['priority'])->toBe(0)
-        ->and($insight->observation)->toContain('at risk');
+        ->and($insight->evidence['days_since_last_publication'])->toBe(20)
+        ->and($insight->observation)->toContain('20 days since your last publication');
+
+    AnalyticsInsight::query()->delete();
+    AuthorPublication::factory()->create([
+        'author_id' => $user,
+        'first_published_at' => '2026-07-10 09:00:00',
+    ]);
+
+    resolve(GenerateInsights::class)->handle($user);
+
+    expect(AnalyticsInsight::query()->where('rule_id', 'publish_next')->exists())->toBeFalse();
 });
 
 it('recommends a related article at the exact reader and material-gap boundaries', function (): void {

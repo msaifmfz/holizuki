@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Domain\Analytics\Contracts\AnalyticsReportingGateway;
 use App\Domain\Analytics\Jobs\PrepareCustomSnapshot;
 use App\Domain\Analytics\Models\AnalyticsDailySiteMetric;
+use App\Domain\Analytics\Models\AnalyticsDimensionPeriodMetric;
 use App\Domain\Analytics\Models\AnalyticsMilestone;
 use App\Domain\Analytics\Models\AnalyticsPeriodSnapshot;
 use App\Domain\Analytics\Models\AnalyticsSnapshotPreparation;
@@ -131,6 +132,119 @@ it('distinguishes exact zero metrics from unavailable metrics', function (): voi
             ->where('snapshotReady', false));
 });
 
+it('exposes a growth narrative and sparkline series for headline metrics', function (): void {
+    $user = User::factory()->create();
+    AnalyticsSyncRun::factory()->create(['completed_at' => now()]);
+    AnalyticsPeriodSnapshot::factory()->create([
+        'scope_type' => 'site',
+        'scope_key' => 'site',
+        'period_key' => '28d',
+        'starts_on' => '2026-06-22',
+        'ends_on' => '2026-07-19',
+        'readers' => 60,
+        'previous_readers' => 40,
+    ]);
+    AnalyticsDailySiteMetric::factory()->create([
+        'metric_date' => '2026-07-18',
+        'readers' => 5,
+        'meaningful_readers' => 2,
+        'actioning_readers' => 1,
+        'page_views' => 9,
+    ]);
+    AnalyticsDailySiteMetric::factory()->create([
+        'metric_date' => '2026-07-19',
+        'readers' => 10,
+        'meaningful_readers' => 4,
+        'actioning_readers' => 5,
+        'page_views' => 12,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('dashboard'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page): AssertableInertia => $page
+            ->where('narrative', 'Readers are up 50% vs the previous 28 days.')
+            ->where('metrics.readers.spark', [5, 10])
+            ->where('metrics.meaningfulReaders.spark', [2, 4])
+            ->where('metrics.readerActionRate.spark.1', 50)
+            ->where('metrics.pageViews.spark', [9, 12]));
+});
+
+it('provides audience dimension breakdowns with reader share and previous readers', function (): void {
+    $user = User::factory()->create();
+    AnalyticsDimensionPeriodMetric::factory()->create([
+        'dimension_type' => 'country',
+        'dimension_value' => 'United States',
+        'position' => 1,
+        'starts_on' => '2026-06-22',
+        'ends_on' => '2026-07-19',
+        'readers' => 75,
+        'previous_readers' => 50,
+    ]);
+    AnalyticsDimensionPeriodMetric::factory()->create([
+        'dimension_type' => 'country',
+        'dimension_value' => 'Japan',
+        'position' => 2,
+        'starts_on' => '2026-06-22',
+        'ends_on' => '2026-07-19',
+        'readers' => 25,
+        'previous_readers' => null,
+    ]);
+    AnalyticsDimensionPeriodMetric::factory()->create([
+        'dimension_type' => 'device',
+        'dimension_value' => 'mobile',
+        'position' => 1,
+        'starts_on' => '2026-06-22',
+        'ends_on' => '2026-07-19',
+        'readers' => 60,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('dashboard.audience'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page): AssertableInertia => $page
+            ->loadDeferredProps(fn (AssertableInertia $loaded): AssertableInertia => $loaded
+                ->where('countries.0.value', 'United States')
+                ->where('countries.0.share', 75)
+                ->where('countries.0.previousReaders', 50)
+                ->where('countries.1.value', 'Japan')
+                ->where('countries.1.share', 25)
+                ->where('countries.1.previousReaders', null)
+                ->where('devices.0.value', 'mobile')
+                ->where('devices.0.share', 100)
+                ->where('sources', [])
+                ->where('landingPages', [])));
+});
+
+it('falls back to the latest completed dimension window until the next sync closes it', function (): void {
+    $user = User::factory()->create();
+    AnalyticsDimensionPeriodMetric::factory()->create([
+        'dimension_type' => 'country',
+        'dimension_value' => 'United States',
+        'period_key' => '28d',
+        'starts_on' => '2026-06-21',
+        'ends_on' => '2026-07-18',
+        'readers' => 75,
+    ]);
+    AnalyticsDimensionPeriodMetric::factory()->create([
+        'dimension_type' => 'country',
+        'dimension_value' => 'Japan',
+        'period_key' => '28d',
+        'starts_on' => '2026-06-14',
+        'ends_on' => '2026-07-11',
+        'readers' => 25,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('dashboard.audience'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page): AssertableInertia => $page
+            ->loadDeferredProps(fn (AssertableInertia $loaded): AssertableInertia => $loaded
+                ->count('countries', 1)
+                ->where('countries.0.value', 'United States')
+                ->where('countries.0.share', 100)));
+});
+
 it('uses exact ISO-week chart points for article periods over ninety days', function (): void {
     $user = User::factory()->create();
     $post = Post::factory()->published()->create();
@@ -254,7 +368,6 @@ it('renders every author analytics and community workspace for an administrator'
         route('dashboard'),
         route('dashboard.posts.index'),
         route('dashboard.audience'),
-        route('dashboard.goals'),
         route('dashboard.achievements'),
         route('dashboard.analytics.settings.edit'),
         route('community.comments.index'),
