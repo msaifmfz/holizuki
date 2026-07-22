@@ -43,7 +43,7 @@ test('devbox defines the canonical local environment and workflows', function ()
         )
         ->and($lefthook)->toContain(
             'run: devbox run -- composer quality',
-            'run: devbox run -- composer test:coverage',
+            'run: devbox run -- sh -c \'PATH="$DEVBOX_PACKAGES_DIR/bin:$PATH" exec composer test:coverage\'',
             'run: devbox run -- npm run check',
         )
         ->not->toContain('command -v composer', 'command -v npm');

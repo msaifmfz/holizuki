@@ -3,11 +3,15 @@
 declare(strict_types=1);
 
 use App\Domain\Analytics\Contracts\AnalyticsReportingGateway;
+use App\Domain\Analytics\Enums\InsightConfidence;
 use App\Domain\Analytics\Jobs\PrepareCustomSnapshot;
+use App\Domain\Analytics\Models\AnalyticsDailyPostMetric;
 use App\Domain\Analytics\Models\AnalyticsDailySiteMetric;
 use App\Domain\Analytics\Models\AnalyticsDimensionPeriodMetric;
+use App\Domain\Analytics\Models\AnalyticsInsight;
 use App\Domain\Analytics\Models\AnalyticsMilestone;
 use App\Domain\Analytics\Models\AnalyticsPeriodSnapshot;
+use App\Domain\Analytics\Models\AnalyticsSetting;
 use App\Domain\Analytics\Models\AnalyticsSnapshotPreparation;
 use App\Domain\Analytics\Models\AnalyticsSyncRun;
 use App\Domain\Analytics\Models\AnalyticsWeeklyPostMetric;
@@ -267,6 +271,105 @@ it('uses exact ISO-week chart points for article periods over ninety days', func
             ->where('chart.resolution', 'weekly')
             ->where('chart.points.0.readers', 42)
             ->where('chart.points.0.date', '2026-07-13'));
+});
+
+it('uses exact daily chart points for article periods up to ninety days', function (): void {
+    $user = User::factory()->create();
+    $post = Post::factory()->published()->create();
+    AnalyticsDailyPostMetric::factory()->create([
+        'post_id' => $post,
+        'content_key' => 'post:'.$post->id,
+        'metric_date' => '2026-07-19',
+        'readers' => 24,
+        'meaningful_readers' => 12,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('dashboard.posts.show', $post))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page): AssertableInertia => $page
+            ->where('chart.resolution', 'daily')
+            ->where('chart.points.0.readers', 24)
+            ->where('chart.points.0.meaningfulReaders', 12)
+            ->where('chart.points.0.date', '2026-07-19'));
+});
+
+it('loads deferred article snapshots momentum and recommendations', function (): void {
+    $user = User::factory()->create();
+    $post = Post::factory()->published()->create(['title' => 'Measured article']);
+    AnalyticsSyncRun::factory()->create([
+        'status' => 'succeeded',
+        'starts_on' => '2026-06-01',
+        'completed_at' => now(),
+    ]);
+    AnalyticsPeriodSnapshot::factory()->create([
+        'scope_type' => 'post',
+        'scope_key' => 'post:'.$post->id,
+        'period_key' => '28d',
+        'starts_on' => '2026-06-22',
+        'ends_on' => '2026-07-19',
+        'readers' => 80,
+    ]);
+
+    foreach ([InsightConfidence::High, InsightConfidence::Medium, InsightConfidence::Exploratory] as $priority => $confidence) {
+        AnalyticsInsight::factory()->create([
+            'user_id' => $user,
+            'post_id' => $post,
+            'rule_id' => 'recommendation_'.$confidence->value,
+            'scope_key' => 'post:'.$post->id.':'.$confidence->value,
+            'confidence' => $confidence,
+            'evidence' => ['priority' => $priority],
+        ]);
+    }
+
+    $this->actingAs($user)
+        ->get(route('dashboard'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page): AssertableInertia => $page
+            ->loadDeferredProps(fn (AssertableInertia $loaded): AssertableInertia => $loaded
+                ->where('topPosts.0.post.id', $post->id)
+                ->where('topPosts.0.post.title', 'Measured article')
+                ->where('topPosts.0.readers', 80)
+                ->has('momentum.score')
+                ->count('recommendations', 3)));
+
+    $this->actingAs($user)
+        ->get(route('dashboard.posts.index'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page): AssertableInertia => $page
+            ->loadDeferredProps(fn (AssertableInertia $loaded): AssertableInertia => $loaded
+                ->where('posts.data.0.post.id', $post->id)
+                ->where('posts.data.0.post.title', 'Measured article')
+                ->where('posts.data.0.readers', 80)));
+});
+
+it('updates and renders persisted analytics display settings', function (): void {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->patch(route('dashboard.analytics.settings.update'), [
+            'material_gap_points' => 25,
+            'show_exploratory_insights' => false,
+        ])
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    expect(AnalyticsSetting::query()->where('key', 'material_gap_points')->value('value'))->toBe(['value' => 25])
+        ->and(AnalyticsSetting::query()->where('key', 'show_exploratory_insights')->value('value'))->toBe(['value' => false]);
+
+    config()->set([
+        'analytics.measurement_id' => '',
+        'analytics.property_id' => '',
+        'analytics.stream_id' => '',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('dashboard.analytics.settings.edit'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page): AssertableInertia => $page
+            ->where('environment.measurementId', null)
+            ->where('settings.materialGapPoints', 25)
+            ->where('settings.showExploratoryInsights', false));
 });
 
 it('deduplicates custom snapshot preparation and validates inclusive range limits', function (): void {

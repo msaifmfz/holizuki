@@ -1,13 +1,10 @@
 import { getSchema } from '@tiptap/core';
-import Document from '@tiptap/extension-document';
-import Heading from '@tiptap/extension-heading';
-import Paragraph from '@tiptap/extension-paragraph';
-import Text from '@tiptap/extension-text';
 import { EditorState } from '@tiptap/pm/state';
+import StarterKit from '@tiptap/starter-kit';
 import { describe, expect, it } from 'vitest';
 import { findTextRange, plainTextNeedle } from './locate';
 
-const schema = getSchema([Document, Paragraph, Text, Heading]);
+const schema = getSchema([StarterKit]);
 
 function docFromText(...paragraphs: string[]) {
     return schema.nodeFromJSON({

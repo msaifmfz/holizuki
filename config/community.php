@@ -2,9 +2,13 @@
 
 declare(strict_types=1);
 
+$emailHashKey = env('COMMUNITY_EMAIL_HASH_KEY');
+
 return [
     'consent_version' => env('COMMUNITY_CONSENT_VERSION', '2026-07-19'),
-    'email_hash_key' => env('COMMUNITY_EMAIL_HASH_KEY', config('app.key')),
+    'email_hash_key' => is_string($emailHashKey) && $emailHashKey !== ''
+        ? $emailHashKey
+        : config('app.key'),
     'confirmation_hours' => 48,
     'unconfirmed_retention_days' => 7,
     'rejected_comment_retention_days' => 90,
