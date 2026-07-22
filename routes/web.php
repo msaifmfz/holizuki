@@ -6,6 +6,14 @@ use App\Http\Admin\Controllers\AnalyticsDashboardController;
 use App\Http\Admin\Controllers\AnalyticsInsightController;
 use App\Http\Admin\Controllers\AnalyticsRealtimeController;
 use App\Http\Admin\Controllers\AnalyticsSettingsController;
+use App\Http\Admin\Controllers\Assistant\AssistantCancelController;
+use App\Http\Admin\Controllers\Assistant\AssistantChangeController;
+use App\Http\Admin\Controllers\Assistant\AssistantChatController;
+use App\Http\Admin\Controllers\Assistant\AssistantImageController;
+use App\Http\Admin\Controllers\Assistant\AssistantMetadataController;
+use App\Http\Admin\Controllers\Assistant\AssistantOutlineController;
+use App\Http\Admin\Controllers\Assistant\AssistantStateController;
+use App\Http\Admin\Controllers\Assistant\AssistantTransformController;
 use App\Http\Admin\Controllers\CategoryController;
 use App\Http\Admin\Controllers\ContactSubmissionController;
 use App\Http\Admin\Controllers\PostAutosaveController;
@@ -56,6 +64,22 @@ Route::middleware(['auth', 'verified', 'access-author-portal'])->group(function 
     Route::post('posts/{post}/feature', [PostFeatureController::class, 'store'])->name('posts.feature.store');
     Route::delete('posts/{post}/feature', [PostFeatureController::class, 'destroy'])->name('posts.feature.destroy');
     Route::post('posts/{post}/inline-images', [PostInlineImageController::class, 'store'])->name('posts.inline-images.store');
+
+    Route::get('posts/{post}/assistant', AssistantStateController::class)->name('posts.assistant.state');
+    Route::post('posts/{post}/assistant/cancel', AssistantCancelController::class)->name('posts.assistant.cancel');
+    Route::post('posts/{post}/assistant/changes/{change}/accept', [AssistantChangeController::class, 'accept'])->name('posts.assistant.changes.accept');
+    Route::post('posts/{post}/assistant/changes/{change}/reject', [AssistantChangeController::class, 'reject'])->name('posts.assistant.changes.reject');
+
+    // Each of these spawns a metered Claude Code process; the per-post busy
+    // guard stops concurrent turns on one post, and this caps how fast an
+    // author can fan out turns across posts.
+    Route::middleware('throttle:assistant')->group(function (): void {
+        Route::post('posts/{post}/assistant/chat', AssistantChatController::class)->name('posts.assistant.chat');
+        Route::post('posts/{post}/assistant/metadata', AssistantMetadataController::class)->name('posts.assistant.metadata');
+        Route::post('posts/{post}/assistant/transform', AssistantTransformController::class)->name('posts.assistant.transform');
+        Route::post('posts/{post}/assistant/outline', AssistantOutlineController::class)->name('posts.assistant.outline');
+        Route::post('posts/{post}/assistant/images', AssistantImageController::class)->name('posts.assistant.images');
+    });
 
     Route::scopeBindings()->group(function (): void {
         Route::get('posts/{post}/revisions', [PostRevisionController::class, 'index'])->name('posts.revisions.index');

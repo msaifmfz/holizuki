@@ -60,6 +60,7 @@ The backend is organized into bounded contexts under `app/Domain/` with an HTTP 
 - `app/Domain/Reading/` — the public read side (post views, public cache, SEO support, reader documents, card/popular queries); may read Publishing/Taxonomy/Identity models but never writes them.
 - `app/Domain/Inbox/` — contact submissions.
 - `app/Domain/Identity/` — users, roles, auth actions; depends on no other context.
+- `app/Domain/Assistant/` — the AI co-writer (headless Claude Code CLI, per-post workspaces, streamed turns, reviewable change proposals). Reads Publishing/Taxonomy *models, markdown, and rules* but never their write paths (Actions/Console/Listeners/Policies/Providers); no other context depends on it. Turn persistence happens through the `AssistantChange` → `SavePost` accept pipeline in `app/Http/Admin/Controllers/Assistant/`, not from the domain layer.
 - `app/Http/{Admin,Public,Settings}/` — controllers/requests per portal; shared base classes and middleware sit at the `app/Http/` root.
 - `app/Support/` — context-free shared kernel (`DbExpressions`, `ResolvesUniqueSlug`, `Slug`).
 

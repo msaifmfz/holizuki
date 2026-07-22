@@ -39,14 +39,21 @@ serviceAccount:
 
 web:
     replicas: 1
+    # FrankenPHP worker threads. Each in-flight assistant SSE turn holds one
+    # for its duration, so this must exceed the expected number of concurrent
+    # co-writer turns plus headroom for health checks and normal traffic.
+    frankenphpMaxThreads: 6
     resources:
         requests:
             cpu: 100m
-            memory: 256Mi
+            memory: 384Mi
             ephemeral-storage: 128Mi
         limits:
-            cpu: 500m
-            memory: 768Mi
+            # The web container spawns the Claude Code CLI as a subprocess for
+            # each assistant turn (a ~200MB standalone binary doing agentic
+            # work), so the limit covers FrankenPHP plus one live agent turn.
+            cpu: '1'
+            memory: 1536Mi
             ephemeral-storage: 512Mi
 
 optimization:
@@ -98,7 +105,19 @@ uploads:
     enabled: true
     existingClaim: ''
     storageClass: holizuki-local
+    # Holds public post media plus the AI co-writer's per-post workspaces and
+    # the Claude Code session/credential store (both under storage/app). The
+    # assistant:prune scheduled command reclaims idle workspaces daily.
     size: 30Gi
+
+# AI writing assistant (Claude Code CLI).
+#
+# Authentication uses the site owner's Claude subscription, not an API key.
+# The CLAUDE_CODE_OAUTH_TOKEN must be provided via the runtime secret
+# (runtimeSecretName). Generate it once with `claude setup-token`.
+assistant:
+    enabled: true
+    turnTimeout: 300
 
 service:
     port: 80

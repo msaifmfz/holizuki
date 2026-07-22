@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+cat > /dev/null
+echo 'claude: fatal, not logged in' >&2
+exit 1

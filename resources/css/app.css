@@ -157,6 +157,29 @@
         @apply min-h-72 px-5 py-4 text-base leading-7 outline-none;
     }
 
+    .assistant-locate-highlight {
+        @apply rounded-sm bg-primary/20;
+        animation: assistant-locate-pulse 2.2s ease-out;
+    }
+
+    @keyframes assistant-locate-pulse {
+        0% {
+            background-color: color-mix(
+                in oklab,
+                var(--primary) 45%,
+                transparent
+            );
+        }
+
+        100% {
+            background-color: color-mix(
+                in oklab,
+                var(--primary) 20%,
+                transparent
+            );
+        }
+    }
+
     .rich-text-content .tiptap h2 {
         @apply mt-8 mb-3 text-2xl font-semibold tracking-tight first:mt-0;
     }

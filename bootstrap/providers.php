@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Domain\Analytics\Providers\AnalyticsServiceProvider;
+use App\Domain\Assistant\Providers\AssistantServiceProvider;
 use App\Domain\Community\Providers\CommunityServiceProvider;
 use App\Domain\Publishing\Providers\PublishingServiceProvider;
 use App\Domain\Reading\Providers\ReadingServiceProvider;
@@ -14,6 +15,7 @@ return [
     FortifyServiceProvider::class,
     CommunityServiceProvider::class,
     AnalyticsServiceProvider::class,
+    AssistantServiceProvider::class,
     PublishingServiceProvider::class,
     ReadingServiceProvider::class,
 ];

@@ -1,12 +1,12 @@
 import { Head, Link, router, setLayoutProps, useHttp } from '@inertiajs/react';
 import {
     CalendarClock,
-    ChevronsUpDown,
     Eye,
     History,
     RotateCcw,
     Save,
     Send,
+    Sparkles,
     Star,
     StarOff,
 } from 'lucide-react';
@@ -24,12 +24,18 @@ import {
     unpublish,
 } from '@/actions/App/Http/Admin/Controllers/PostPublishingController';
 import { index as revisionsIndex } from '@/actions/App/Http/Admin/Controllers/PostRevisionController';
+import AssistantPanel from '@/components/assistant/assistant-panel';
+import FieldSuggestionChip from '@/components/assistant/field-suggestion-chip';
+import GenerateButton from '@/components/assistant/generate-button';
+import OutlineWizard from '@/components/assistant/outline-wizard';
+import OrganizationCard from '@/components/editor/organization-card';
+import SeoCard from '@/components/editor/seo-card';
+import { documentHasText } from '@/components/editor/types';
+import type { EditorForm } from '@/components/editor/types';
 import FeaturedImageUploader from '@/components/featured-image-uploader';
 import InputError from '@/components/input-error';
-import OgImageUploader from '@/components/og-image-uploader';
 import PostStatusBadge from '@/components/post-status-badge';
 import RichTextEditor from '@/components/rich-text-editor';
-import TagMultiSelect from '@/components/tag-multi-select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
@@ -39,22 +45,9 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
-import {
-    Collapsible,
-    CollapsibleContent,
-    CollapsibleTrigger,
-} from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
+import { useAssistant } from '@/hooks/use-assistant';
 import {
     errorText,
     formatDate,
@@ -67,33 +60,13 @@ import {
     store as featurePost,
 } from '@/routes/posts/feature';
 import type {
+    AcceptChangeResponse,
+    AssistantChangeData,
     AutosaveResponse,
     EditorOption,
     PostConflict,
     PostEditorData,
-    RichTextDocument,
 } from '@/types';
-
-type EditorForm = {
-    title: string;
-    slug: string;
-    slug_is_manual: boolean;
-    excerpt: string;
-    body: RichTextDocument | null;
-    featured_image_alt: string;
-    featured_image_caption: string;
-    category_id: number | null;
-    author_id: number | null;
-    tags: string[];
-    seo_title: string;
-    meta_description: string;
-    canonical_url: string;
-    og_title: string;
-    og_description: string;
-    noindex: boolean;
-    lock_version: number;
-    force: boolean;
-};
 
 type PublishingResponse = {
     status: 'draft' | 'scheduled' | 'published';
@@ -128,6 +101,11 @@ export default function EditPost({
         'saved',
     );
     const [conflict, setConflict] = useState<PostConflict | null>(null);
+    const [assistantOpen, setAssistantOpen] = useState(false);
+    const [locateTarget, setLocateTarget] = useState<{
+        markdown: string;
+        token: number;
+    } | null>(null);
     const [scheduleAt, setScheduleAt] = useState(
         toLocalDateTimeInput(post.scheduled_at),
     );
@@ -212,6 +190,72 @@ export default function EditPost({
             return null;
         }
     };
+
+    const applyAcceptedChange = (
+        change: AssistantChangeData,
+        saved: AcceptChangeResponse['post'],
+    ) => {
+        const updates: Partial<EditorForm> = {
+            slug: saved.slug,
+            lock_version: saved.lock_version,
+        };
+
+        switch (change.type) {
+            case 'title':
+                updates.title = saved.title ?? '';
+                break;
+            case 'excerpt':
+                updates.excerpt = saved.excerpt ?? '';
+                break;
+            case 'seo_title':
+                updates.seo_title = saved.seo_title ?? '';
+                break;
+            case 'meta_description':
+                updates.meta_description = saved.meta_description ?? '';
+                break;
+            case 'og_title':
+                updates.og_title = saved.og_title ?? '';
+                break;
+            case 'og_description':
+                updates.og_description = saved.og_description ?? '';
+                break;
+            case 'featured_image_alt':
+                updates.featured_image_alt = saved.featured_image_alt ?? '';
+                break;
+            case 'featured_image_caption':
+                updates.featured_image_caption =
+                    saved.featured_image_caption ?? '';
+                break;
+            case 'tags':
+                updates.tags = saved.tags;
+                break;
+            case 'body':
+                updates.body = saved.body;
+                break;
+        }
+
+        autosave.setData((data) => ({ ...data, ...updates }));
+        autosave.setDefaults(updates);
+        setPostState((current) => ({
+            ...current,
+            slug: saved.slug,
+            lock_version: saved.lock_version,
+            updated_at: saved.updated_at,
+            last_editor: saved.last_editor,
+        }));
+    };
+
+    const assistant = useAssistant({
+        postId: post.id,
+        ensureSaved: async () => {
+            if (conflict) {
+                return false;
+            }
+
+            return autosave.isDirty ? (await save()) !== null : true;
+        },
+        onAccepted: applyAcceptedChange,
+    });
 
     const autosaveAfterDelay = useEffectEvent(() => void save());
 
@@ -377,6 +421,21 @@ export default function EditPost({
                         <div className="flex flex-wrap gap-2">
                             <Button
                                 type="button"
+                                variant={assistantOpen ? 'default' : 'outline'}
+                                onClick={() =>
+                                    setAssistantOpen((open) => !open)
+                                }
+                            >
+                                <Sparkles />
+                                Co-writer
+                                {assistant.bodyChanges.length > 0 && (
+                                    <span className="ml-1 rounded-full bg-primary-foreground/20 px-1.5 text-xs">
+                                        {assistant.bodyChanges.length}
+                                    </span>
+                                )}
+                            </Button>
+                            <Button
+                                type="button"
                                 variant="outline"
                                 onClick={openPreview}
                             >
@@ -484,7 +543,17 @@ export default function EditPost({
                                 />
                             </div>
                             <div className="grid gap-2">
-                                <Label htmlFor="excerpt">Excerpt</Label>
+                                <div className="flex items-center justify-between">
+                                    <Label htmlFor="excerpt">Excerpt</Label>
+                                    <GenerateButton
+                                        busy={assistant.generating}
+                                        onClick={() =>
+                                            void assistant.generateMetadata([
+                                                'excerpt',
+                                            ])
+                                        }
+                                    />
+                                </div>
                                 <textarea
                                     id="excerpt"
                                     value={autosave.data.excerpt}
@@ -509,9 +578,27 @@ export default function EditPost({
                                         {autosave.data.excerpt.length}/500
                                     </span>
                                 </div>
+                                {assistant.suggestions.excerpt && (
+                                    <FieldSuggestionChip
+                                        change={assistant.suggestions.excerpt}
+                                        busy={assistant.deciding}
+                                        onAccept={assistant.accept}
+                                        onReject={assistant.reject}
+                                    />
+                                )}
                             </div>
                         </CardContent>
                     </Card>
+
+                    {!documentHasText(autosave.data.body) && (
+                        <OutlineWizard
+                            busy={assistant.generating}
+                            onStart={(topic) => {
+                                setAssistantOpen(true);
+                                void assistant.startOutline(topic);
+                            }}
+                        />
+                    )}
 
                     <Card>
                         <CardHeader>
@@ -525,6 +612,20 @@ export default function EditPost({
                             <RichTextEditor
                                 value={autosave.data.body}
                                 postId={post.id}
+                                locateTarget={locateTarget}
+                                aiBusy={assistant.generating}
+                                onAiTransform={(
+                                    selection,
+                                    preset,
+                                    instruction,
+                                ) => {
+                                    setAssistantOpen(true);
+                                    void assistant.transform(
+                                        selection,
+                                        preset,
+                                        instruction,
+                                    );
+                                }}
                                 onChange={(body) =>
                                     autosave.setData('body', body)
                                 }
@@ -538,309 +639,36 @@ export default function EditPost({
                 </main>
 
                 <aside className="grid content-start gap-6">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Organization</CardTitle>
-                            <CardDescription>
-                                A category is required to publish. Tags are
-                                optional.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="grid gap-4">
-                            <div className="grid gap-2">
-                                <Label htmlFor="category">Category</Label>
-                                <Select
-                                    value={
-                                        autosave.data.category_id?.toString() ??
-                                        ''
-                                    }
-                                    onValueChange={(value) =>
-                                        autosave.setData(
-                                            'category_id',
-                                            Number(value),
-                                        )
-                                    }
-                                >
-                                    <SelectTrigger id="category">
-                                        <SelectValue placeholder="Choose a category" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {categories.map((category) => (
-                                            <SelectItem
-                                                key={category.id}
-                                                value={category.id.toString()}
-                                            >
-                                                {category.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                {categories.length === 0 && (
-                                    <p className="text-xs text-muted-foreground">
-                                        No categories yet — create one from the
-                                        Categories page.
-                                    </p>
-                                )}
-                                <InputError
-                                    message={errorText(
-                                        autosave.errors.category_id,
-                                    )}
-                                />
-                            </div>
-                            <div className="grid gap-2">
-                                <Label>Tags</Label>
-                                <TagMultiSelect
-                                    value={autosave.data.tags}
-                                    suggestions={tagSuggestions}
-                                    onChange={(tags) =>
-                                        autosave.setData('tags', tags)
-                                    }
-                                />
-                                <InputError
-                                    message={errorText(autosave.errors.tags)}
-                                />
-                            </div>
-                            <div className="grid gap-2">
-                                <Label htmlFor="author">Author</Label>
-                                <Select
-                                    value={
-                                        autosave.data.author_id?.toString() ??
-                                        ''
-                                    }
-                                    onValueChange={(value) =>
-                                        autosave.setData(
-                                            'author_id',
-                                            Number(value),
-                                        )
-                                    }
-                                >
-                                    <SelectTrigger id="author">
-                                        <SelectValue placeholder="Choose an author" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {authors.map((author) => (
-                                            <SelectItem
-                                                key={author.id}
-                                                value={author.id.toString()}
-                                            >
-                                                {author.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <InputError
-                                    message={errorText(
-                                        autosave.errors.author_id,
-                                    )}
-                                />
-                            </div>
-                        </CardContent>
-                    </Card>
+                    <OrganizationCard
+                        autosave={autosave}
+                        assistant={assistant}
+                        categories={categories}
+                        authors={authors}
+                        tagSuggestions={tagSuggestions}
+                    />
 
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>SEO</CardTitle>
-                            <CardDescription>
-                                Optional overrides — search and social fall back
-                                to the title and excerpt.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="grid gap-4">
-                            <div className="grid gap-2">
-                                <Label htmlFor="seo-title">SEO title</Label>
-                                <Input
-                                    id="seo-title"
-                                    value={autosave.data.seo_title}
-                                    maxLength={255}
-                                    onChange={(event) =>
-                                        autosave.setData(
-                                            'seo_title',
-                                            event.target.value,
-                                        )
-                                    }
-                                    placeholder={autosave.data.title}
-                                />
-                                <div className="flex justify-between text-xs text-muted-foreground">
-                                    <InputError
-                                        message={errorText(
-                                            autosave.errors.seo_title,
-                                        )}
-                                    />
-                                    <span
-                                        className={
-                                            autosave.data.seo_title.length > 60
-                                                ? 'text-amber-600'
-                                                : undefined
-                                        }
-                                    >
-                                        {autosave.data.seo_title.length}/60
-                                    </span>
-                                </div>
-                            </div>
-                            <div className="grid gap-2">
-                                <Label htmlFor="meta-description">
-                                    Meta description
-                                </Label>
-                                <Textarea
-                                    id="meta-description"
-                                    value={autosave.data.meta_description}
-                                    maxLength={255}
-                                    rows={3}
-                                    onChange={(event) =>
-                                        autosave.setData(
-                                            'meta_description',
-                                            event.target.value,
-                                        )
-                                    }
-                                    placeholder="Shown in search results — falls back to the excerpt"
-                                />
-                                <div className="flex justify-between text-xs text-muted-foreground">
-                                    <InputError
-                                        message={errorText(
-                                            autosave.errors.meta_description,
-                                        )}
-                                    />
-                                    <span
-                                        className={
-                                            autosave.data.meta_description
-                                                .length > 160
-                                                ? 'text-amber-600'
-                                                : undefined
-                                        }
-                                    >
-                                        {autosave.data.meta_description.length}
-                                        /160
-                                    </span>
-                                </div>
-                            </div>
-                            <div className="grid gap-2">
-                                <Label htmlFor="canonical-url">
-                                    Canonical URL
-                                </Label>
-                                <Input
-                                    id="canonical-url"
-                                    type="url"
-                                    value={autosave.data.canonical_url}
-                                    maxLength={2048}
-                                    onChange={(event) =>
-                                        autosave.setData(
-                                            'canonical_url',
-                                            event.target.value,
-                                        )
-                                    }
-                                    placeholder="Only if this post first appeared elsewhere"
-                                />
-                                <InputError
-                                    message={errorText(
-                                        autosave.errors.canonical_url,
-                                    )}
-                                />
-                            </div>
-                            <Collapsible className="grid gap-4">
-                                <CollapsibleTrigger asChild>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        className="justify-between"
-                                    >
-                                        Social sharing
-                                        <ChevronsUpDown />
-                                    </Button>
-                                </CollapsibleTrigger>
-                                <CollapsibleContent className="grid gap-4">
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="og-title">
-                                            Social title
-                                        </Label>
-                                        <Input
-                                            id="og-title"
-                                            value={autosave.data.og_title}
-                                            maxLength={255}
-                                            onChange={(event) =>
-                                                autosave.setData(
-                                                    'og_title',
-                                                    event.target.value,
-                                                )
-                                            }
-                                        />
-                                        <InputError
-                                            message={errorText(
-                                                autosave.errors.og_title,
-                                            )}
-                                        />
-                                    </div>
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="og-description">
-                                            Social description
-                                        </Label>
-                                        <Textarea
-                                            id="og-description"
-                                            value={autosave.data.og_description}
-                                            maxLength={500}
-                                            rows={2}
-                                            onChange={(event) =>
-                                                autosave.setData(
-                                                    'og_description',
-                                                    event.target.value,
-                                                )
-                                            }
-                                        />
-                                        <InputError
-                                            message={errorText(
-                                                autosave.errors.og_description,
-                                            )}
-                                        />
-                                    </div>
-                                    <OgImageUploader
-                                        postId={post.id}
-                                        lockVersion={autosave.data.lock_version}
-                                        imageUrl={postState.og_image_url}
-                                        onChange={(response) => {
-                                            autosave.setData(
-                                                'lock_version',
-                                                response.lock_version,
-                                            );
-                                            autosave.setDefaults(
-                                                'lock_version',
-                                                response.lock_version,
-                                            );
-                                            setPostState((current) => ({
-                                                ...current,
-                                                og_image_url:
-                                                    response.og_image_url,
-                                                lock_version:
-                                                    response.lock_version,
-                                                updated_at: response.updated_at,
-                                            }));
-                                        }}
-                                    />
-                                </CollapsibleContent>
-                            </Collapsible>
-                            <div className="flex items-start gap-2">
-                                <Checkbox
-                                    id="noindex"
-                                    checked={autosave.data.noindex}
-                                    onCheckedChange={(checked) =>
-                                        autosave.setData(
-                                            'noindex',
-                                            checked === true,
-                                        )
-                                    }
-                                />
-                                <div className="grid gap-1">
-                                    <Label htmlFor="noindex">
-                                        Hide from search engines
-                                    </Label>
-                                    <p className="text-xs text-muted-foreground">
-                                        Adds a noindex tag and removes the post
-                                        from the sitemap. Readers can still open
-                                        it directly.
-                                    </p>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
+                    <SeoCard
+                        autosave={autosave}
+                        assistant={assistant}
+                        postId={post.id}
+                        ogImageUrl={postState.og_image_url}
+                        onOgImageChange={(response) => {
+                            autosave.setData(
+                                'lock_version',
+                                response.lock_version,
+                            );
+                            autosave.setDefaults(
+                                'lock_version',
+                                response.lock_version,
+                            );
+                            setPostState((current) => ({
+                                ...current,
+                                og_image_url: response.og_image_url,
+                                lock_version: response.lock_version,
+                                updated_at: response.updated_at,
+                            }));
+                        }}
+                    />
 
                     <Card>
                         <CardHeader>
@@ -955,7 +783,17 @@ export default function EditPost({
                     </Card>
 
                     <Card>
-                        <CardContent className="pt-6">
+                        <CardContent className="grid gap-3 pt-6">
+                            <div className="flex justify-end">
+                                <GenerateButton
+                                    label="Review images"
+                                    busy={assistant.generating}
+                                    onClick={() => {
+                                        setAssistantOpen(true);
+                                        void assistant.reviewImages();
+                                    }}
+                                />
+                            </div>
                             <FeaturedImageUploader
                                 key={postState.featured_image_url ?? 'no-image'}
                                 postId={post.id}
@@ -1033,6 +871,36 @@ export default function EditPost({
                     </Button>
                 </aside>
             </div>
+
+            <AssistantPanel
+                open={assistantOpen}
+                onClose={() => setAssistantOpen(false)}
+                thread={assistant.thread}
+                bodyChanges={assistant.bodyChanges}
+                streaming={assistant.generating}
+                narration={assistant.narration}
+                deciding={assistant.deciding}
+                outlineReady={assistant.outlineReady}
+                onDraftOutline={() => void assistant.draftOutline()}
+                onSend={(message) => void assistant.sendChat(message)}
+                onCancel={assistant.cancel}
+                onAccept={(change) => void assistant.accept(change)}
+                onReject={(change) => void assistant.reject(change)}
+                onLocate={(change) => {
+                    const payload = change.payload as {
+                        old_blocks?: string;
+                        anchor_before?: string | null;
+                    };
+                    const markdown =
+                        payload.old_blocks && payload.old_blocks !== ''
+                            ? payload.old_blocks
+                            : (payload.anchor_before ?? '');
+
+                    if (markdown !== '') {
+                        setLocateTarget({ markdown, token: Date.now() });
+                    }
+                }}
+            />
         </>
     );
 }

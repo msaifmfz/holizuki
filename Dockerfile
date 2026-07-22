@@ -8,6 +8,19 @@ FROM ${COMPOSER_BASE_IMAGE} AS composer
 
 FROM ${NODE_BASE_IMAGE} AS node
 
+FROM debian:trixie-slim AS claude-cli
+
+# Pin via --build-arg CLAUDE_CODE_VERSION=x.y.z; the native installer needs
+# no Node at runtime — the standalone binary is copied into the final image.
+ARG CLAUDE_CODE_VERSION="latest"
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL https://claude.ai/install.sh | bash -s -- "${CLAUDE_CODE_VERSION}" \
+    && cp -L /root/.local/bin/claude /usr/local/bin/claude \
+    && /usr/local/bin/claude --version
+
 FROM ${PHP_BASE_IMAGE} AS php-base
 
 RUN install-php-extensions \
@@ -72,6 +85,8 @@ LABEL org.opencontainers.image.source="https://github.com/msaifmfz/holizuki" \
 
 ENV APP_ENV=production \
     APP_DEBUG=false \
+    ASSISTANT_CLAUDE_BIN=/usr/local/bin/claude \
+    HOME=/app/storage/app/assistant/home \
     LOG_CHANNEL=stderr \
     SERVER_NAME=:8080 \
     TELESCOPE_ENABLED=false \
@@ -84,6 +99,8 @@ RUN groupadd --gid 10001 app \
     && useradd --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app \
     && install -d -o app -g app \
         /app/bootstrap/cache \
+        /app/storage/app/ai-workspaces \
+        /app/storage/app/assistant/home \
         /app/storage/app/public \
         /app/storage/framework/cache/data \
         /app/storage/framework/sessions \
@@ -93,6 +110,7 @@ RUN groupadd --gid 10001 app \
         /tmp/caddy/data
 
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=claude-cli /usr/local/bin/claude /usr/local/bin/claude
 COPY --from=backend --chown=app:app /app /app
 COPY --from=frontend --chown=app:app /build/public/build /app/public/build
 COPY --from=frontend --chown=app:app /build/bootstrap/ssr /app/bootstrap/ssr

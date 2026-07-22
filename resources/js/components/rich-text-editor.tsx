@@ -34,6 +34,7 @@ import {
     Undo2,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import SelectionToolbar from '@/components/assistant/selection-toolbar';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import {
@@ -53,6 +54,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { findTextRange, plainTextNeedle } from '@/lib/assistant/locate';
+import { LocateHighlight } from '@/lib/assistant/locate-highlight';
+import type { TransformPreset } from '@/lib/assistant/transforms';
 import { resizeInlineImage } from '@/lib/crop-image';
 import { errorText } from '@/lib/post-editor';
 import { cn } from '@/lib/utils';
@@ -112,6 +116,18 @@ type Props = {
     readOnly?: boolean;
     className?: string;
     postId?: number;
+    aiBusy?: boolean;
+    onAiTransform?: (
+        selection: string,
+        preset: TransformPreset,
+        instruction?: string,
+    ) => void;
+    /**
+     * A passage to reveal in the editor. Each distinct request (`token`
+     * changes) scrolls the markdown block into view and briefly highlights
+     * it; used to locate an assistant change in the body.
+     */
+    locateTarget?: { markdown: string; token: number } | null;
 };
 
 type InlineImageResponse = {
@@ -127,6 +143,9 @@ export default function RichTextEditor({
     readOnly = false,
     className,
     postId,
+    aiBusy = false,
+    onAiTransform,
+    locateTarget = null,
 }: Props) {
     const [imageDialogOpen, setImageDialogOpen] = useState(false);
     const [imageFile, setImageFile] = useState<File | null>(null);
@@ -160,14 +179,24 @@ export default function RichTextEditor({
                 allowBase64: false,
                 inline: false,
             }),
+            LocateHighlight,
         ],
         content: value ?? { type: 'doc', content: [{ type: 'paragraph' }] },
         editable: !readOnly,
         immediatelyRender: false,
         editorProps: {
-            attributes: {
-                'aria-label': readOnly ? 'Article body' : 'Post body',
-            },
+            attributes: readOnly
+                ? {
+                      role: 'article',
+                      'aria-label': 'Article body',
+                  }
+                : {
+                      // A labelled textbox needs an explicit role and
+                      // multiline hint to satisfy ARIA on the contenteditable.
+                      role: 'textbox',
+                      'aria-multiline': 'true',
+                      'aria-label': 'Post body',
+                  },
         },
         onUpdate: ({ editor: currentEditor }) =>
             onChange?.(currentEditor.getJSON()),
@@ -182,6 +211,29 @@ export default function RichTextEditor({
             editor.commands.setContent(value, { emitUpdate: false });
         }
     }, [editor, value]);
+
+    useEffect(() => {
+        if (!editor || !locateTarget) {
+            return;
+        }
+
+        const needle = plainTextNeedle(locateTarget.markdown);
+        const range = needle ? findTextRange(editor.state.doc, needle) : null;
+
+        if (!range) {
+            return;
+        }
+
+        editor.chain().setLocateHighlight(range.from, range.to).run();
+        const timeout = window.setTimeout(
+            () => editor.commands.clearLocateHighlight(),
+            2200,
+        );
+
+        return () => window.clearTimeout(timeout);
+        // Re-run only when a new locate request arrives (token changes).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editor, locateTarget?.token]);
 
     useEffect(
         () => () => {
@@ -304,6 +356,13 @@ export default function RichTextEditor({
                 className,
             )}
         >
+            {!readOnly && onAiTransform && (
+                <SelectionToolbar
+                    editor={editor}
+                    busy={aiBusy}
+                    onTransform={onAiTransform}
+                />
+            )}
             {!readOnly && (
                 <div
                     className="flex flex-wrap gap-1 border-b bg-muted/40 p-2"

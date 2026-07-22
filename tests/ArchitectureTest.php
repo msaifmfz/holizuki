@@ -90,6 +90,33 @@ arch('analytics observes community only through immutable events')
         'App\Domain\Community\ValueObjects',
     ]);
 
+arch('assistant reads publishing and taxonomy but never their write paths')
+    ->expect('App\Domain\Assistant')
+    ->not->toUse([
+        'App\Domain\Publishing\Actions',
+        'App\Domain\Publishing\Console',
+        'App\Domain\Publishing\Listeners',
+        'App\Domain\Publishing\Policies',
+        'App\Domain\Publishing\Providers',
+        'App\Domain\Taxonomy\Actions',
+        'App\Domain\Reading',
+        'App\Domain\Inbox',
+        'App\Domain\Community',
+        'App\Domain\Analytics',
+    ]);
+
+arch('no context depends on the assistant')
+    ->expect([
+        'App\Domain\Publishing',
+        'App\Domain\Taxonomy',
+        'App\Domain\Reading',
+        'App\Domain\Inbox',
+        'App\Domain\Community',
+        'App\Domain\Analytics',
+        'App\Domain\Identity',
+    ])
+    ->not->toUse('App\Domain\Assistant');
+
 arch('domain events are immutable')
     ->expect('App\Domain\Publishing\Events')
     ->toBeFinal()->toBeReadonly()

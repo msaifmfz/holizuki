@@ -58,6 +58,12 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
-            fn (Request $request): bool => $request->is('api/*') || $request->expectsJson(),
+            // SSE clients (the AI assistant stream) send an explicit
+            // text/event-stream Accept and cannot parse an HTML error page —
+            // normal navigations never request that type, so their error pages
+            // are unaffected.
+            fn (Request $request): bool => $request->is('api/*')
+                || $request->expectsJson()
+                || str_contains((string) $request->header('Accept'), 'text/event-stream'),
         );
     })->create();

@@ -6,6 +6,8 @@ role="${1:-web}"
 
 mkdir -p \
     bootstrap/cache \
+    storage/app/ai-workspaces \
+    storage/app/assistant/home \
     storage/app/public \
     storage/framework/cache/data \
     storage/framework/sessions \

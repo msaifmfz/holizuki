@@ -32,6 +32,11 @@ Schedule::command('community:prune')
     ->withoutOverlapping()
     ->onOneServer();
 
+Schedule::command('assistant:prune')
+    ->daily()
+    ->withoutOverlapping()
+    ->onOneServer();
+
 Schedule::command('analytics:sync-recent')
     ->everyFourHours()
     ->withoutOverlapping(90)

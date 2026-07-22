@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Stand-in for the Claude Code CLI used by ClaudeCliRunnerTest. Emits a
+# canned stream-json conversation, records its prompt/HOME/cwd, and touches
+# a file the way a real agent edit would.
+
+prompt=$(cat)
+
+printf '%s' "$prompt" > prompt.txt
+printf '%s' "$HOME" > home.txt
+printf 'touched' > touched.txt
+
+echo '{"type":"system","subtype":"init","session_id":"fixture-session"}'
+echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Working on it."},{"type":"tool_use","name":"Edit","input":{"file_path":"draft.md"}}]}}'
+echo 'this line is not json and must be ignored'
+echo '{"type":"result","subtype":"success","is_error":false,"duration_ms":42,"total_cost_usd":0.001,"result":"Done."}'

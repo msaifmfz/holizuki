@@ -18,7 +18,8 @@
         "laravel/framework": "^13.17",
         "laravel/passkeys": "^0.2.0",
         "laravel/tinker": "^3.0",
-        "laravel/wayfinder": "^0.1.14"
+        "laravel/wayfinder": "^0.1.14",
+        "league/commonmark": "^2.8"
     },
     "require-dev": {
         "barryvdh/laravel-ide-helper": "^3.7",

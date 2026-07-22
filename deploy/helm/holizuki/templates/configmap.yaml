@@ -25,10 +25,19 @@ data:
   DB_SSLMODE: {{ .Values.database.sslMode | quote }}
   DB_QUEUE_RETRY_AFTER: "120"
   FILESYSTEM_DISK: {{ .Values.application.filesystemDisk | quote }}
+  # Long-lived assistant SSE turns each hold a worker thread for the duration
+  # of the turn, so keep enough headroom that health checks and normal
+  # requests are never starved while a co-writer turn is streaming.
   FRANKENPHP_CONFIG: |-
-    num_threads 1
-    max_threads 2
-    max_idle_time 5s
+    num_threads 2
+    max_threads {{ .Values.web.frankenphpMaxThreads | default 6 }}
+    max_idle_time 30s
+  ASSISTANT_ENABLED: {{ .Values.assistant.enabled | quote }}
+  ASSISTANT_TURN_TIMEOUT: {{ .Values.assistant.turnTimeout | quote }}
+  # HOME anchors the Claude Code CLI's credentials and session files onto the
+  # persisted uploads volume (mounted at /app/storage/app). The image sets
+  # this too; pinning it here keeps the deployment self-documenting.
+  HOME: "/app/storage/app/assistant/home"
   LOG_CHANNEL: "stderr"
   LOG_LEVEL: "info"
   MAIL_MAILER: {{ .Values.application.mailMailer | quote }}
