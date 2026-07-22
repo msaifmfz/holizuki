@@ -10,33 +10,32 @@ provisioner: kubernetes.io/no-provisioner
 reclaimPolicy: Retain
 volumeBindingMode: WaitForFirstConsumer
 ---
-{{- range $name, $environment := .Values.environments }}
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: holizuki-{{ $name }}-postgres
+  name: holizuki-database-postgres
   annotations:
     helm.sh/resource-policy: keep
   labels:
     app.kubernetes.io/component: postgres
-    holizuki.dev/environment: {{ $name }}
-    {{- include "holizuki-platform.labels" $ | nindent 4 }}
+    {{- include "holizuki-platform.labels" . | nindent 4 }}
 spec:
   accessModes:
     - ReadWriteOnce
   capacity:
-    storage: {{ $environment.postgres.storage }}
+    storage: {{ .Values.database.storage.size }}
   claimRef:
-    name: {{ $.Values.postgres.clusterName }}-1
-    namespace: {{ $environment.namespace }}
+    name: {{ .Values.postgres.clusterName }}-1
+    namespace: {{ .Values.database.namespace }}
   local:
-    path: {{ $environment.postgres.path }}
+    path: {{ .Values.database.storage.path }}
   nodeAffinity:
-    {{- include "holizuki-platform.nodeAffinity" $ | nindent 4 }}
+    {{- include "holizuki-platform.nodeAffinity" . | nindent 4 }}
   persistentVolumeReclaimPolicy: Retain
-  storageClassName: {{ $.Values.storageClass.name }}
+  storageClassName: {{ .Values.storageClass.name }}
   volumeMode: Filesystem
 ---
+{{- range $name, $environment := .Values.environments }}
 apiVersion: v1
 kind: PersistentVolume
 metadata:

@@ -63,21 +63,23 @@
         },
         "database": {
             "type": "object",
-            "required": [
-                "host",
-                "port",
-                "name",
-                "username",
-                "passwordSecretName",
-                "passwordSecretKey"
-            ],
+            "required": ["host", "port", "name", "username", "sslMode"],
             "properties": {
                 "host": { "type": "string", "minLength": 1 },
                 "port": { "type": "string", "pattern": "^[0-9]+$" },
                 "name": { "type": "string", "minLength": 1 },
                 "username": { "type": "string", "minLength": 1 },
-                "passwordSecretName": { "type": "string", "minLength": 1 },
-                "passwordSecretKey": { "type": "string", "minLength": 1 }
+                "sslMode": {
+                    "type": "string",
+                    "enum": [
+                        "disable",
+                        "allow",
+                        "prefer",
+                        "require",
+                        "verify-ca",
+                        "verify-full"
+                    ]
+                }
             }
         }
     }

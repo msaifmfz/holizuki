@@ -39,6 +39,18 @@ spec:
       terminationGracePeriodSeconds: 120
       securityContext:
         {{- include "holizuki.podSecurityContext" . | nindent 8 }}
+      initContainers:
+        - name: optimize
+          image: {{ include "holizuki.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - optimize
+          securityContext:
+            {{- include "holizuki.containerSecurityContext" . | nindent 12 }}
+          {{- include "holizuki.env" . | nindent 10 }}
+          resources:
+            {{- toYaml .Values.optimization.resources | nindent 12 }}
+          {{- include "holizuki.volumeMounts" . | nindent 10 }}
       containers:
         - name: web
           image: {{ include "holizuki.image" . }}
@@ -91,5 +103,27 @@ spec:
                   - sleep 5
           resources:
             {{- toYaml .Values.web.resources | nindent 12 }}
+          {{- include "holizuki.volumeMounts" . | nindent 10 }}
+        - name: worker
+          image: {{ include "holizuki.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - worker
+          securityContext:
+            {{- include "holizuki.containerSecurityContext" . | nindent 12 }}
+          {{- include "holizuki.env" . | nindent 10 }}
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+          {{- include "holizuki.volumeMounts" . | nindent 10 }}
+        - name: scheduler
+          image: {{ include "holizuki.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - scheduler
+          securityContext:
+            {{- include "holizuki.containerSecurityContext" . | nindent 12 }}
+          {{- include "holizuki.env" . | nindent 10 }}
+          resources:
+            {{- toYaml .Values.scheduler.resources | nindent 12 }}
           {{- include "holizuki.volumeMounts" . | nindent 10 }}
       {{- include "holizuki.volumes" . | nindent 6 }}

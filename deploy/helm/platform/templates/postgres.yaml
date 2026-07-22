@@ -1,40 +1,62 @@
-{{- range $name, $environment := .Values.environments }}
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
-  name: {{ $.Values.postgres.clusterName }}
-  namespace: {{ $environment.namespace }}
+  name: {{ .Values.postgres.clusterName }}
+  namespace: {{ .Values.database.namespace }}
   annotations:
     helm.sh/resource-policy: keep
   labels:
-    holizuki.dev/environment: {{ $name }}
-    {{- include "holizuki-platform.labels" $ | nindent 4 }}
+    {{- include "holizuki-platform.labels" . | nindent 4 }}
 spec:
   instances: 1
-  imageName: {{ $.Values.postgres.image }}
+  imageName: {{ .Values.postgres.image }}
   primaryUpdateStrategy: unsupervised
   enableSuperuserAccess: false
   bootstrap:
     initdb:
-      database: {{ $.Values.postgres.database }}
-      owner: {{ $.Values.postgres.owner }}
+      database: {{ .Values.postgres.production.database }}
+      owner: {{ .Values.postgres.production.owner }}
+      secret:
+        name: {{ .Values.postgres.production.passwordSecretName }}
       encoding: UTF8
       dataChecksums: true
+  managed:
+    roles:
+      - name: {{ .Values.postgres.production.owner }}
+        ensure: present
+        login: true
+        connectionLimit: {{ .Values.postgres.production.connectionLimit }}
+        passwordSecret:
+          name: {{ .Values.postgres.production.passwordSecretName }}
+      - name: {{ .Values.postgres.staging.owner }}
+        ensure: present
+        login: true
+        connectionLimit: {{ .Values.postgres.staging.connectionLimit }}
+        passwordSecret:
+          name: {{ .Values.postgres.staging.passwordSecretName }}
   storage:
-    size: {{ $environment.postgres.storage }}
-    storageClass: {{ $.Values.storageClass.name }}
+    size: {{ .Values.database.storage.size }}
+    storageClass: {{ .Values.storageClass.name }}
   resources:
-    {{- toYaml $environment.postgres.resources | nindent 4 }}
+    {{- toYaml .Values.postgres.resources | nindent 4 }}
   postgresql:
     parameters:
-      max_connections: "100"
-      shared_buffers: "256MB"
+      autovacuum_work_mem: "32MB"
+      maintenance_work_mem: "64MB"
+      max_connections: "50"
+      shared_buffers: "128MB"
+      work_mem: "2MB"
+    pg_hba:
+      - hostssl {{ .Values.postgres.production.database }} {{ .Values.postgres.production.owner }} all scram-sha-256
+      - hostssl {{ .Values.postgres.staging.database }} {{ .Values.postgres.staging.owner }} all scram-sha-256
+      - hostssl all {{ .Values.postgres.production.owner }} all reject
+      - hostssl all {{ .Values.postgres.staging.owner }} all reject
   affinity:
     nodeSelector:
-      kubernetes.io/hostname: {{ $.Values.nodeHostname | quote }}
+      kubernetes.io/hostname: {{ .Values.nodeHostname | quote }}
   monitoring:
-    enablePodMonitor: {{ $.Values.postgres.monitoringEnabled }}
-  {{- if $.Values.backup.enabled }}
+    enablePodMonitor: {{ .Values.postgres.monitoringEnabled }}
+  {{- if .Values.backup.enabled }}
   plugins:
     - name: barman-cloud.cloudnative-pg.io
       isWALArchiver: true
@@ -42,4 +64,73 @@ spec:
         barmanObjectName: holizuki-backup
   {{- end }}
 ---
-{{- end }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: holizuki-staging
+  namespace: {{ .Values.database.namespace }}
+  annotations:
+    helm.sh/resource-policy: keep
+  labels:
+    {{- include "holizuki-platform.labels" . | nindent 4 }}
+spec:
+  name: {{ .Values.postgres.staging.database }}
+  owner: {{ .Values.postgres.staging.owner }}
+  cluster:
+    name: {{ .Values.postgres.clusterName }}
+  databaseReclaimPolicy: retain
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: holizuki-postgres-ingress
+  namespace: {{ .Values.database.namespace }}
+  labels:
+    {{- include "holizuki-platform.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: {{ .Values.postgres.clusterName }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  - production
+                  - staging
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: holizuki
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                  - migration
+                  - web
+      ports:
+        - port: 5432
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+      ports:
+        - port: 5432
+          protocol: TCP
+        - port: 8000
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 9187
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.database.namespace }}

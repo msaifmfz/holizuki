@@ -2,11 +2,11 @@ alertmanager:
     alertmanagerSpec:
         resources:
             requests:
-                cpu: 50m
-                memory: 128Mi
+                cpu: 25m
+                memory: 64Mi
             limits:
-                cpu: 250m
-                memory: 256Mi
+                cpu: 100m
+                memory: 128Mi
         storage:
             volumeClaimTemplate:
                 spec:
@@ -14,7 +14,7 @@ alertmanager:
                         - ReadWriteOnce
                     resources:
                         requests:
-                            storage: 2Gi
+                            storage: 1Gi
                     storageClassName: local-path
 
 grafana:
@@ -26,26 +26,36 @@ grafana:
         enabled: false
     persistence:
         enabled: true
-        size: 5Gi
+        size: 2Gi
         storageClassName: local-path
     resources:
         requests:
-            cpu: 100m
-            memory: 256Mi
+            cpu: 50m
+            memory: 128Mi
         limits:
-            cpu: 500m
-            memory: 512Mi
+            cpu: 250m
+            memory: 256Mi
+
+    sidecar:
+        resources:
+            requests:
+                cpu: 10m
+                memory: 32Mi
+            limits:
+                cpu: 50m
+                memory: 64Mi
 
 prometheus:
     prometheusSpec:
-        retention: 15d
+        retention: 7d
+        retentionSize: 6GB
         resources:
             requests:
-                cpu: 250m
-                memory: 768Mi
+                cpu: 150m
+                memory: 384Mi
             limits:
-                cpu: '1'
-                memory: 2Gi
+                cpu: 750m
+                memory: 1Gi
         serviceMonitorNamespaceSelector: {}
         serviceMonitorSelectorNilUsesHelmValues: false
         podMonitorNamespaceSelector: {}
@@ -57,14 +67,40 @@ prometheus:
                         - ReadWriteOnce
                     resources:
                         requests:
-                            storage: 20Gi
+                            storage: 8Gi
                     storageClassName: local-path
 
 prometheusOperator:
+    prometheusConfigReloader:
+        resources:
+            requests:
+                cpu: 10m
+                memory: 32Mi
+            limits:
+                cpu: 50m
+                memory: 64Mi
     resources:
         requests:
+            cpu: 50m
+            memory: 64Mi
+        limits:
+            cpu: 250m
+            memory: 256Mi
+
+kube-state-metrics:
+    resources:
+        requests:
+            cpu: 25m
+            memory: 64Mi
+        limits:
             cpu: 100m
             memory: 128Mi
+
+prometheus-node-exporter:
+    resources:
+        requests:
+            cpu: 20m
+            memory: 32Mi
         limits:
-            cpu: 500m
-            memory: 512Mi
+            cpu: 100m
+            memory: 64Mi

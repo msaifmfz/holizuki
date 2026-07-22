@@ -4,6 +4,7 @@ set -Eeuo pipefail
 
 image="${1:-holizuki:ci}"
 container_id=''
+frankenphp_config=$'num_threads 1\nmax_threads 2\nmax_idle_time 5s'
 
 cleanup() {
     if [[ -n "$container_id" ]]; then
@@ -18,6 +19,7 @@ trap cleanup EXIT
 
 docker run --rm --entrypoint php "$image" -r \
     'exit(extension_loaded("pdo_pgsql") && extension_loaded("intl") && extension_loaded("pcntl") && extension_loaded("zip") ? 0 : 1);'
+[[ "$(docker run --rm --entrypoint php "$image" -r 'echo ini_get("opcache.enable_cli");')" == '0' ]]
 docker run --rm --entrypoint php "$image" artisan about --only=environment >/dev/null
 docker run --rm --entrypoint /bin/sh "$image" -c \
     'test ! -e /app/.env && test ! -d /app/tests && ! command -v composer && ! command -v node'
@@ -34,6 +36,7 @@ container_id="$(docker run --detach --read-only \
     --env CACHE_STORE=array \
     --env DB_CONNECTION=sqlite \
     --env DB_DATABASE=:memory: \
+    --env FRANKENPHP_CONFIG="$frankenphp_config" \
     --env QUEUE_CONNECTION=sync \
     --env SESSION_DRIVER=array \
     --env TRUSTED_HOSTS=holizuki.test \

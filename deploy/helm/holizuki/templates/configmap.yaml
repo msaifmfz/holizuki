@@ -25,6 +25,10 @@ data:
   DB_SSLMODE: {{ .Values.database.sslMode | quote }}
   DB_QUEUE_RETRY_AFTER: "120"
   FILESYSTEM_DISK: {{ .Values.application.filesystemDisk | quote }}
+  FRANKENPHP_CONFIG: |-
+    num_threads 1
+    max_threads 2
+    max_idle_time 5s
   LOG_CHANNEL: "stderr"
   LOG_LEVEL: "info"
   MAIL_MAILER: {{ .Values.application.mailMailer | quote }}

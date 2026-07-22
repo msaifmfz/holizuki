@@ -43,6 +43,10 @@ fi
 
 grep -Fq "  image: $POSTGRES_IMAGE" "$repository_root/deploy/helm/platform/values.yaml"
 grep -Fq "node-name: holizuki-01" "$repository_root/deploy/server/k3s-config.yaml"
+grep -Fq -- '--memory=128' "$repository_root/docker/entrypoint.sh"
+grep -Fq 'schedule:work --whisper --no-interaction' "$repository_root/docker/entrypoint.sh"
+grep -Fq 'opcache.enable_cli=0' "$repository_root/docker/php.ini"
+grep -Fq 'group: deploy-staging' "$repository_root/.github/workflows/staging-control.yml"
 grep -Fq 'source deploy/platform/versions.env' "$repository_root/.github/workflows/ci.yml"
 grep -Fq 'source deploy/platform/versions.env' "$repository_root/.github/workflows/deploy.yml"
 

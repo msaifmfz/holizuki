@@ -14,8 +14,10 @@ mkdir -p \
     /tmp/caddy/data
 
 case "$role" in
+    optimize)
+        exec php artisan optimize
+        ;;
     web)
-        php artisan optimize
         exec frankenphp php-server --listen :8080 --root public/
         ;;
     ssr)
@@ -23,16 +25,16 @@ case "$role" in
         exec php artisan inertia:start-ssr
         ;;
     worker)
-        php artisan optimize
         exec php artisan queue:work \
             --backoff=3 \
             --max-time=3600 \
+            --memory=128 \
             --sleep=3 \
             --timeout=90 \
             --tries=3
         ;;
     scheduler)
-        exec php artisan schedule:run --no-interaction
+        exec php artisan schedule:work --whisper --no-interaction
         ;;
     migrate)
         php artisan migrate --force --no-interaction

@@ -1,18 +1,15 @@
 # Backup and restore runbook
 
-Backups are incomplete until they are off the server, monitored, and restored successfully in a drill. Production and staging use different object-store prefixes.
+Backups are incomplete until they are off the server, monitored, and restored successfully in a drill. Production and staging use one physical PostgreSQL cluster, so every base backup and WAL stream contains both logical databases and must be restored as a unit.
 
 Run the administrative commands with `KUBECONFIG=/etc/rancher/k3s/k3s.yaml`.
 
 ## PostgreSQL backups
 
-Create an S3-compatible bucket with versioning and object lock/retention if the provider supports them. Use credentials limited to that bucket. Create the secret in both namespaces without committing it:
+Create an S3-compatible bucket with versioning and object lock/retention if the provider supports them. Use credentials limited to that bucket. Create one secret in the database namespace without committing it:
 
 ```bash
-kubectl -n production create secret generic holizuki-backup-object-store \
-  --from-literal=ACCESS_KEY_ID='replace-me' \
-  --from-literal=ACCESS_SECRET_KEY='replace-me'
-kubectl -n staging create secret generic holizuki-backup-object-store \
+kubectl -n database create secret generic holizuki-backup-object-store \
   --from-literal=ACCESS_KEY_ID='replace-me' \
   --from-literal=ACCESS_SECRET_KEY='replace-me'
 ```
@@ -43,7 +40,7 @@ apiVersion: postgresql.cnpg.io/v1
 kind: Backup
 metadata:
   name: BACKUP_NAME
-  namespace: production
+  namespace: database
 spec:
   cluster:
     name: holizuki-postgres
@@ -51,10 +48,10 @@ spec:
   pluginConfiguration:
     name: barman-cloud.cloudnative-pg.io
 YAML
-kubectl get backups.postgresql.cnpg.io -n production --watch
+kubectl get backups.postgresql.cnpg.io -n database --watch
 ```
 
-The scheduled backup uses CloudNativePG's six-field cron syntax. WAL archiving provides point-in-time recovery between base backups. Alert on failed backups and a recoverability point that stops advancing.
+The scheduled backup uses CloudNativePG's six-field cron syntax. WAL archiving provides point-in-time recovery between base backups. Alert on failed backups and a recoverability point that stops advancing. A successful backup protects both `holizuki_production` and `holizuki_staging`; there is no independent physical restore point for either database.
 
 ## Upload and K3s backups
 
@@ -74,10 +71,10 @@ Run off-server backups after the nightly database base backup, retain daily/week
 
 CloudNativePG recovery creates a new cluster; it does not overwrite the source cluster. Drill in a disposable namespace and directory, never over production.
 
-1. Choose a completed production backup or point-in-time target.
-2. Create a disposable namespace, a new local path/PV, the object-store credentials, and an `ObjectStore` pointing at the production backup prefix.
+1. Choose a completed shared-cluster backup or point-in-time target.
+2. Create a disposable namespace, a new local path/PV, the object-store credentials, and an `ObjectStore` pointing at the shared backup destination.
 3. Create a new `Cluster` with a unique name and `bootstrap.recovery.source`.
-4. Wait for recovery, connect read-only, and verify migrations, row counts, recent records, authentication data, and application-critical queries.
+4. Wait for recovery, connect read-only, and verify both databases, both login roles, migrations, row counts, recent records, authentication data, and application-critical queries.
 5. Record recovery point objective (RPO), recovery time objective (RTO), backup ID, target time, and evidence.
 6. Delete only the disposable cluster/PVC/PV after the drill is signed off.
 
@@ -86,26 +83,31 @@ The recovery portion of the disposable `Cluster` follows this shape:
 ```yaml
 bootstrap:
   recovery:
-    source: production-backup
+    source: shared-backup
     # For PITR, uncomment and supply an approved UTC timestamp.
     # recoveryTarget:
     #   targetTime: "2026-07-10T02:00:00Z"
 externalClusters:
-  - name: production-backup
+  - name: shared-backup
     plugin:
       name: barman-cloud.cloudnative-pg.io
       parameters:
-        barmanObjectName: production-restore-object-store
+        barmanObjectName: shared-restore-object-store
         serverName: holizuki-postgres
 ```
 
 Use a distinct `ObjectStore` name and a distinct destination for any new backups taken by the restored cluster. Never disable the empty-WAL-archive safety check during a routine drill. Refer to the CloudNativePG 1.29 recovery and Barman Cloud Plugin documentation before applying the full recovery manifest.
 
-## Production recovery decision
+## Shared database recovery decision
 
-During an incident, first stop writes by scaling the application web and worker deployments to zero. Preserve the failed volumes and Kubernetes resources for investigation. The incident owner must choose an approved recovery target and decide whether uploads also need a coordinated restore.
+During an incident, first stop writes from both environments by scaling their single application Deployments to zero. This stops web, queue, and scheduler processes together. Preserve the failed volumes and Kubernetes resources for investigation. The incident owner must choose an approved recovery target and decide whether either upload volume also needs a coordinated restore.
 
-Recover to a new PostgreSQL cluster and validate it before changing the application's database host. Keep the old cluster untouched until business validation completes. Rotate database/application credentials after recovery if compromise is suspected.
+```bash
+kubectl -n production scale deployment/holizuki-web --replicas=0
+kubectl -n staging scale deployment/holizuki-web --replicas=0
+```
+
+Recover to a new PostgreSQL cluster and validate both logical databases before changing either application's database host. Keep the old cluster untouched until business validation completes. A physical point-in-time recovery cannot select only production; restoring one environment without the other requires a separately designed logical export/import process. Rotate both database/application credential pairs after recovery if compromise is suspected.
 
 For a total server loss:
 
@@ -113,7 +115,7 @@ For a total server loss:
 2. Restore only the K3s snapshot if its trust and consistency are known; otherwise reconstruct platform state from Git and your secrets vault.
 3. Recreate local volumes and restore uploads.
 4. Install cert-manager, CloudNativePG, and Barman.
-5. Recover production PostgreSQL to a new cluster from object storage.
+5. Recover the shared PostgreSQL cluster, including both logical databases, to a new cluster from object storage.
 6. Deploy the last approved image digest from its release manifest.
 7. Validate internally, then switch DNS/traffic.
 

@@ -83,12 +83,6 @@ envFrom:
       name: {{ include "holizuki.fullname" . }}
   - secretRef:
       name: {{ .Values.runtimeSecretName }}
-env:
-  - name: DB_PASSWORD
-    valueFrom:
-      secretKeyRef:
-        name: {{ .Values.database.passwordSecretName }}
-        key: {{ .Values.database.passwordSecretKey }}
 {{- end -}}
 
 {{- define "holizuki.migrationEnv" -}}
@@ -120,11 +114,6 @@ env:
     value: {{ .Values.database.username | quote }}
   - name: DB_SSLMODE
     value: {{ .Values.database.sslMode | quote }}
-  - name: DB_PASSWORD
-    valueFrom:
-      secretKeyRef:
-        name: {{ .Values.database.passwordSecretName }}
-        key: {{ .Values.database.passwordSecretKey }}
   - name: LOG_CHANNEL
     value: "stderr"
   - name: TELESCOPE_ENABLED

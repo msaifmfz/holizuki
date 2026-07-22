@@ -11,9 +11,36 @@ clusterIssuer:
 postgres:
     image: ghcr.io/cloudnative-pg/postgresql:18.3-standard-trixie@sha256:9f9f53c9e07e5b2924945e6eaeb9168f7e856786d221839866ac85ccd703b3ba
     clusterName: holizuki-postgres
-    database: holizuki
-    owner: holizuki
     monitoringEnabled: false
+    resources:
+        requests:
+            cpu: 200m
+            memory: 384Mi
+        limits:
+            cpu: '1'
+            memory: 768Mi
+    production:
+        database: holizuki_production
+        owner: holizuki_production
+        passwordSecretName: holizuki-production-db
+        connectionLimit: 30
+    staging:
+        database: holizuki_staging
+        owner: holizuki_staging
+        passwordSecretName: holizuki-staging-db
+        connectionLimit: 10
+
+database:
+    namespace: database
+    storage:
+        size: 50Gi
+        path: /srv/holizuki/database/postgres
+    quota:
+        requestsCpu: '1'
+        requestsMemory: 2Gi
+        limitsCpu: '2'
+        limitsMemory: 3Gi
+        storage: 60Gi
 
 monitoring:
     enabled: false
@@ -25,47 +52,34 @@ backup:
     credentialsSecretName: holizuki-backup-object-store
     schedule: '0 30 2 * * *'
     retentionPolicy: 30d
+    sidecarResources:
+        requests:
+            cpu: 25m
+            memory: 64Mi
+        limits:
+            cpu: 250m
+            memory: 128Mi
 
 environments:
     production:
         namespace: production
-        postgres:
-            storage: 50Gi
-            path: /srv/holizuki/production/postgres
-            resources:
-                requests:
-                    cpu: 500m
-                    memory: 1Gi
-                limits:
-                    cpu: '2'
-                    memory: 2Gi
         uploads:
             storage: 30Gi
             path: /srv/holizuki/production/uploads
         quota:
-            requestsCpu: '4'
-            requestsMemory: 8Gi
-            limitsCpu: '8'
-            limitsMemory: 12Gi
-            storage: 100Gi
+            requestsCpu: '2'
+            requestsMemory: 2Gi
+            limitsCpu: '4'
+            limitsMemory: 4Gi
+            storage: 40Gi
     staging:
         namespace: staging
-        postgres:
-            storage: 15Gi
-            path: /srv/holizuki/staging/postgres
-            resources:
-                requests:
-                    cpu: 200m
-                    memory: 512Mi
-                limits:
-                    cpu: '1'
-                    memory: 1Gi
         uploads:
             storage: 10Gi
             path: /srv/holizuki/staging/uploads
         quota:
             requestsCpu: '2'
-            requestsMemory: 3Gi
+            requestsMemory: 2Gi
             limitsCpu: '4'
             limitsMemory: 4Gi
-            storage: 30Gi
+            storage: 20Gi

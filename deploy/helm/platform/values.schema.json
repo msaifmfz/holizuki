@@ -6,6 +6,7 @@
         "storageClass",
         "clusterIssuer",
         "postgres",
+        "database",
         "monitoring",
         "backup",
         "environments"
@@ -28,10 +29,15 @@
             "required": [
                 "image",
                 "clusterName",
-                "database",
-                "owner",
-                "monitoringEnabled"
+                "monitoringEnabled",
+                "resources",
+                "production",
+                "staging"
             ]
+        },
+        "database": {
+            "type": "object",
+            "required": ["namespace", "storage", "quota"]
         },
         "monitoring": {
             "type": "object",
@@ -44,7 +50,8 @@
                 "destinationPath",
                 "credentialsSecretName",
                 "schedule",
-                "retentionPolicy"
+                "retentionPolicy",
+                "sidecarResources"
             ]
         },
         "environments": {

@@ -29,15 +29,15 @@ spec:
             description: "The migration job in {{`{{ $labels.namespace }}`}} failed."
         {{- if .Values.backup.enabled }}
         - alert: HolizukiDatabaseBackupStale
-          expr: (time() - barman_cloud_cloudnative_pg_io_last_available_backup_timestamp{namespace=~"production|staging"}) > 129600 and barman_cloud_cloudnative_pg_io_last_available_backup_timestamp{namespace=~"production|staging"} > 0
+          expr: (time() - barman_cloud_cloudnative_pg_io_last_available_backup_timestamp{namespace="database"}) > 129600 and barman_cloud_cloudnative_pg_io_last_available_backup_timestamp{namespace="database"} > 0
           for: 15m
           labels:
             severity: critical
           annotations:
             summary: Holizuki database backup is stale
-            description: "{{`{{ $labels.namespace }}`}} has no successful database backup in the last 36 hours."
+            description: "The shared database cluster has no successful backup in the last 36 hours."
         - alert: HolizukiDatabaseBackupFailed
-          expr: barman_cloud_cloudnative_pg_io_last_failed_backup_timestamp{namespace=~"production|staging"} > barman_cloud_cloudnative_pg_io_last_available_backup_timestamp{namespace=~"production|staging"}
+          expr: barman_cloud_cloudnative_pg_io_last_failed_backup_timestamp{namespace="database"} > barman_cloud_cloudnative_pg_io_last_available_backup_timestamp{namespace="database"}
           for: 15m
           labels:
             severity: critical
@@ -45,12 +45,12 @@ spec:
             summary: Latest Holizuki database backup failed
             description: "The most recent database backup attempt in {{`{{ $labels.namespace }}`}} failed."
         - alert: HolizukiWalArchiveBacklog
-          expr: cnpg_collector_pg_wal_archive_status{namespace=~"production|staging",value="ready"} > 10
+          expr: cnpg_collector_pg_wal_archive_status{namespace="database",value="ready"} > 10
           for: 15m
           labels:
             severity: warning
           annotations:
             summary: Holizuki WAL archive is falling behind
-            description: "{{`{{ $labels.namespace }}`}} has more than 10 WAL segments waiting to archive."
+            description: "The shared database cluster has more than 10 WAL segments waiting to archive."
         {{- end }}
 {{- end }}

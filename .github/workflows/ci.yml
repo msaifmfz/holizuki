@@ -245,6 +245,9 @@ jobs:
       - name: Test atomic deployment
         run: bash .github/scripts/test-deploy-release.sh
 
+      - name: Test staging control
+        run: bash .github/scripts/test-control-staging.sh
+
       - name: Test deployment kubeconfig creation
         run: bash .github/scripts/test-create-deployer-kubeconfig.sh
 
@@ -303,6 +306,9 @@ jobs:
           helm lint deploy/helm/holizuki --values deploy/helm/holizuki/values-production.yaml
           helm lint deploy/helm/holizuki --values deploy/helm/holizuki/values-staging.yaml
           helm lint deploy/helm/platform
+
+      - name: Test rendered deployment contracts
+        run: bash .github/scripts/test-helm-manifests.sh
 
       - name: Validate rendered Kubernetes resources
         env:

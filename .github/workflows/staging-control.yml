@@ -1,0 +1,96 @@
+name: Control staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Start, stop, or inspect the staging application pod.
+        required: true
+        default: status
+        type: choice
+        options:
+          - status
+          - start
+          - stop
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  control:
+    name: ${{ inputs.action }} staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: staging
+      url: ${{ vars.DEPLOY_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          DEPLOY_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+        run: |
+          for variable in DEPLOY_HOST DEPLOY_KNOWN_HOSTS DEPLOY_PRIVATE_KEY DEPLOY_USER; do
+            if [[ -z "${!variable}" ]]; then
+              echo "::error::Missing staging configuration: $variable"
+              exit 1
+            fi
+          done
+
+          [[ "$DEPLOY_HOST" =~ ^[A-Za-z0-9.-]+$ ]]
+          [[ "$DEPLOY_USER" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]]
+          [[ "$DEPLOY_PORT" =~ ^[0-9]+$ ]]
+
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" >"$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          install -m 600 /dev/null "$HOME/.ssh/deploy_key"
+          printf '%s\n' "$DEPLOY_PRIVATE_KEY" >"$HOME/.ssh/deploy_key"
+
+      - name: Control staging pod
+        env:
+          ACTION: ${{ inputs.action }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+        run: |
+          [[ "$ACTION" == start || "$ACTION" == stop || "$ACTION" == status ]]
+          printf -v remote_command '/usr/local/bin/holizuki-staging %q' "$ACTION"
+
+          ssh \
+            -i "$HOME/.ssh/deploy_key" \
+            -p "$DEPLOY_PORT" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "$remote_command"
+
+      - name: Verify staging is externally reachable
+        if: inputs.action == 'start'
+        env:
+          DEPLOY_URL: ${{ vars.DEPLOY_URL }}
+        run: |
+          [[ "$DEPLOY_URL" =~ ^https://[A-Za-z0-9.-]+/?$ ]]
+          status="$(curl \
+            --location \
+            --max-time 15 \
+            --output /dev/null \
+            --show-error \
+            --silent \
+            --write-out '%{http_code}' \
+            "${DEPLOY_URL%/}/up")"
+          [[ "$status" == 401 ]]

@@ -1,44 +1,45 @@
 {{- if .Values.backup.enabled }}
-{{- range $name, $environment := .Values.environments }}
 apiVersion: barmancloud.cnpg.io/v1
 kind: ObjectStore
 metadata:
   name: holizuki-backup
-  namespace: {{ $environment.namespace }}
+  namespace: {{ .Values.database.namespace }}
   labels:
-    {{- include "holizuki-platform.labels" $ | nindent 4 }}
+    {{- include "holizuki-platform.labels" . | nindent 4 }}
 spec:
   configuration:
-    destinationPath: {{ printf "%s/%s" (trimSuffix "/" $.Values.backup.destinationPath) $name | quote }}
-    {{- with $.Values.backup.endpointURL }}
+    destinationPath: {{ .Values.backup.destinationPath | quote }}
+    {{- with .Values.backup.endpointURL }}
     endpointURL: {{ . | quote }}
     {{- end }}
     s3Credentials:
       accessKeyId:
-        name: {{ $.Values.backup.credentialsSecretName }}
+        name: {{ .Values.backup.credentialsSecretName }}
         key: ACCESS_KEY_ID
       secretAccessKey:
-        name: {{ $.Values.backup.credentialsSecretName }}
+        name: {{ .Values.backup.credentialsSecretName }}
         key: ACCESS_SECRET_KEY
     wal:
       compression: gzip
-  retentionPolicy: {{ $.Values.backup.retentionPolicy | quote }}
+  instanceSidecarConfiguration:
+    resources:
+      {{- toYaml .Values.backup.sidecarResources | nindent 6 }}
+  retentionPolicy: {{ .Values.backup.retentionPolicy | quote }}
 ---
 apiVersion: postgresql.cnpg.io/v1
 kind: ScheduledBackup
 metadata:
   name: holizuki-daily
-  namespace: {{ $environment.namespace }}
+  namespace: {{ .Values.database.namespace }}
   labels:
-    {{- include "holizuki-platform.labels" $ | nindent 4 }}
+    {{- include "holizuki-platform.labels" . | nindent 4 }}
 spec:
-  schedule: {{ $.Values.backup.schedule | quote }}
+  schedule: {{ .Values.backup.schedule | quote }}
   backupOwnerReference: self
   cluster:
-    name: {{ $.Values.postgres.clusterName }}
+    name: {{ .Values.postgres.clusterName }}
   method: plugin
   pluginConfiguration:
     name: barman-cloud.cloudnative-pg.io
 ---
-{{- end }}
 {{- end }}

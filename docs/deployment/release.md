@@ -7,7 +7,7 @@
 - CI builds an OCI image only for a release candidate. It pins the PHP base image, builds frontend assets, generates an SBOM/provenance, scans high and critical vulnerabilities, and pushes to GHCR.
 - Production never rebuilds the image. It finds a successfully deployed release candidate with the same version and exact Git commit, rescans that digest for high and critical vulnerabilities, then promotes it.
 - Helm deploys by `repository@sha256:digest`, not by a mutable image tag.
-- Production and staging deployments have separate locks, namespaces, secrets, databases, uploads, resource quotas, ingress hosts, and PHP images.
+- Production and staging deployments have separate locks, namespaces, runtime secrets, logical databases, login roles, uploads, resource quotas, ingress hosts, and PHP images. They share one PostgreSQL cluster and physical backup stream.
 
 ## Test a different PHP version
 
@@ -36,10 +36,12 @@ The workflow must be dispatched from the same tag supplied in `tag`. It tests an
 ```bash
 kubectl --kubeconfig /srv/holizuki/kubeconfig/staging.yaml -n staging get deployments,pods,jobs
 kubectl --kubeconfig /srv/holizuki/kubeconfig/staging.yaml -n staging get deployment holizuki-web \
-  -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+  -o jsonpath='{.spec.template.spec.containers[*].name}{"\n"}{.spec.template.spec.containers[*].image}{"\n"}'
 ```
 
 Exercise login, queues, scheduled tasks, file uploads, email behavior, and database changes. Staging basic auth and `X-Robots-Tag` remain enabled. Use only synthetic staging data.
+
+The release-candidate deployment starts staging automatically. After testing, run the manual **Control staging** workflow with `stop`; `status` and `start` are available from the same workflow. Stopping scales the combined application Deployment to zero while retaining its release, ingress, upload volume, and logical database.
 
 ## Promote to production
 
@@ -60,11 +62,12 @@ The production GitHub environment should require approval. The workflow fails cl
 2. It builds a candidate or resolves the tested digest for a stable release.
 3. It attests and transfers the chart, environment values, and release manifest with SHA-256 checksums.
 4. The server validates every checksum and manifest field.
-5. Helm runs the migration hook, then performs an atomic rolling upgrade.
-6. Kubernetes startup, readiness, and liveness probes gate availability.
-7. The server checks `/up` and `/ready` from inside the namespace and verifies the public ingress/TLS response.
-8. A failed Helm upgrade rolls back automatically. A post-upgrade health failure rolls the application back to the previous Helm revision, or uninstalls a failed initial release.
-9. The deployed digest and timestamp are recorded under `/srv/holizuki/history/ENVIRONMENT`.
+5. Helm runs the migration hook, then performs an atomic rolling upgrade of the single application Deployment.
+6. An init container builds Laravel's caches once. The resulting pod runs web, queue worker, and scheduler as three independently limited containers.
+7. Kubernetes startup, readiness, and liveness probes gate web availability. The queue worker recycles hourly, and every scheduled task uses shared database locks to prevent duplicate execution during a rolling surge.
+8. The server checks `/up` and `/ready` from inside the namespace and verifies the public ingress/TLS response.
+9. A failed Helm upgrade rolls back automatically. A post-upgrade health failure rolls the application back to the previous Helm revision, or uninstalls a failed initial release.
+10. The deployed digest and timestamp are recorded under `/srv/holizuki/history/ENVIRONMENT`.
 
 Database migrations are not automatically reversed. Every production migration must use an expand-and-contract sequence so the old and new application versions can run against the schema during rollout and rollback.
 
@@ -77,7 +80,7 @@ helm status holizuki -n production
 kubectl rollout status deployment/holizuki-web -n production --timeout=5m
 ```
 
-To roll the application workloads back to a known Helm revision:
+To roll the web, worker, and scheduler containers back together to a known Helm revision:
 
 ```bash
 helm rollback holizuki REVISION \
@@ -85,7 +88,7 @@ helm rollback holizuki REVISION \
   --cleanup-on-fail --wait --timeout 10m
 ```
 
-Do not roll back across a destructive database migration. Restore a database only through the recovery process, with the incident owner approving the recovery point.
+Do not roll back across a destructive database migration. A physical PostgreSQL restore recovers both environments together; use only the recovery process, with the incident owner approving the recovery point.
 
 ## PHP and platform upgrades
 

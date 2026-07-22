@@ -1,15 +1,17 @@
 # Holizuki single-server K3s setup
 
-This runbook prepares one Ubuntu 24.04 x86-64 server for isolated production and staging workloads. Kubernetes isolates the PHP runtimes and deployments, but one physical server is still one failure domain. Keep database, upload, and K3s backups off the server.
+This runbook prepares one Ubuntu 24.04 x86-64 server for isolated production and staging application workloads. Both environments use one CloudNativePG cluster, with separate databases, login roles, passwords, and host-based access rules. The server remains one failure domain, so keep database, upload, and K3s backups off the server.
 
 ## 1. Before touching the server
 
-- Size the server at 8 vCPU, 16 GiB RAM, and at least 250 GiB SSD/NVMe.
+- For this pre-launch configuration, use at least 4 vCPU, 8 GiB RAM, and 200 GiB SSD/NVMe. Move to 16 GiB before sustained traffic, memory-heavy jobs, or keeping staging online continuously.
 - Point the production and staging DNS `A`/`AAAA` records at the server.
 - Choose the two hosts, for example `app.example.com` and `staging.example.com`.
 - Restrict SSH/22 to administrator and GitHub Actions egress where possible. Expose only 80 and 443 publicly. Do not expose the K3s API on 6443.
 - Use the hostname `holizuki-01`. If a different hostname is required, update `deploy/server/k3s-config.yaml` and `nodeHostname` in the platform values together.
-- Put `/srv/holizuki` on its own ext4 or XFS logical volume. Leave at least 50 GiB for Ubuntu and K3s itself.
+- Put `/srv/holizuki` on its own ext4 or XFS logical volume. The declared persistent volumes total 101 GiB: 50 GiB for PostgreSQL, 40 GiB for uploads, and 11 GiB for monitoring. A 200 GiB disk leaves room for Ubuntu, K3s/container images, snapshots, logs, and growth.
+
+With staging stopped, the explicitly configured steady workload requests are about 1.9 GiB across production, PostgreSQL and its backup sidecar, monitoring, and cluster operators. Starting staging adds 416 MiB. The remaining RAM is reserved for K3s/Traefik, the OS page cache, rollouts, migration jobs, backups, and traffic bursts; do not size the server from Kubernetes requests alone.
 
 K3s and host firewalls can conflict. Prefer the provider firewall. If UFW must remain enabled, follow the current K3s networking documentation and allow the pod and service CIDRs; do not blindly enable UFW after installing K3s.
 
@@ -35,9 +37,8 @@ for account in deploy-production deploy-staging; do
 done
 
 sudo install -d -m 0750 -o root -g holizuki-deploy /srv/holizuki
-sudo install -d -m 0700 -o 26 -g 26 /srv/holizuki/production/postgres
+sudo install -d -m 0700 -o 26 -g 26 /srv/holizuki/database/postgres
 sudo install -d -m 0770 -o 10001 -g 10001 /srv/holizuki/production/uploads
-sudo install -d -m 0700 -o 26 -g 26 /srv/holizuki/staging/postgres
 sudo install -d -m 0770 -o 10001 -g 10001 /srv/holizuki/staging/uploads
 sudo install -d -m 0700 -o root -g root /srv/holizuki/k3s
 sudo install -d -m 0700 -o root -g root /srv/holizuki/k3s-snapshots
@@ -120,17 +121,20 @@ helm upgrade --install cert-manager jetstack/cert-manager \
   --create-namespace \
   --version "$CERT_MANAGER_VERSION" \
   --set crds.enabled=true \
+  --values deploy/platform/cert-manager-values.yaml \
   --rollback-on-failure --wait --timeout 10m
 
 helm upgrade --install cloudnative-pg cloudnative-pg/cloudnative-pg \
   --namespace cnpg-system \
   --create-namespace \
   --version "$CLOUDNATIVE_PG_CHART_VERSION" \
+  --values deploy/platform/cloudnative-pg-values.yaml \
   --rollback-on-failure --wait --timeout 10m
 
 helm upgrade --install plugin-barman-cloud cloudnative-pg/plugin-barman-cloud \
   --namespace cnpg-system \
   --version "$BARMAN_CLOUD_PLUGIN_CHART_VERSION" \
+  --values deploy/platform/plugin-barman-cloud-values.yaml \
   --rollback-on-failure --wait --timeout 10m
 ```
 
@@ -150,7 +154,7 @@ backup:
   enabled: false
 ```
 
-Install the chart once with backups and Prometheus resources disabled. This creates both namespaces, resource quotas, static volumes, PostgreSQL clusters, the TLS issuer, and deployment RBAC.
+Install the chart once with backups and Prometheus resources disabled. This creates the production, staging, and database namespaces; resource quotas; static volumes; the shared PostgreSQL cluster; the TLS issuer; and deployment RBAC.
 
 ```bash
 sudo chown root:k3s-admin /srv/holizuki/config/platform-values.yaml
@@ -162,24 +166,56 @@ helm upgrade --install holizuki-platform deploy/helm/platform \
   --rollback-on-failure --wait --timeout 15m
 
 kubectl get clusters.postgresql.cnpg.io --all-namespaces
-kubectl wait --for=condition=Ready cluster/holizuki-postgres -n production --timeout=10m
-kubectl wait --for=condition=Ready cluster/holizuki-postgres -n staging --timeout=10m
 ```
 
-Do not reuse production's database or upload volume in staging. The static claims and host paths are intentionally separate.
+The PostgreSQL cluster cannot initialize until the credentials in the next section exist. Helm does not place database passwords in its release values.
+
+Production and staging share the PostgreSQL process and 50 GiB volume, but not a database or login role. Their upload claims and host paths remain separate. A PostgreSQL failure or restore affects both environments.
 
 ## 6. Create application secrets
 
-Generate a different, permanent `APP_KEY` for each environment. Store the source values in your password manager, not in Git, terminal history, or GitHub variables.
+Generate a different, permanent `APP_KEY` and database password for each environment. Store the source values in your password manager, not in Git, terminal history, or GitHub variables.
 
 ```bash
 printf 'base64:%s\n' "$(openssl rand -base64 32)"
 ```
 
-Create a temporary root-owned file for each environment, then create the runtime secret. Add the real mail provider values for production. Staging should use a non-delivering mail provider or `MAIL_MAILER=log`.
+First create CloudNativePG basic-auth secrets in the shared database namespace. The files must use these exact usernames and independently generated passwords:
+
+```text
+username=holizuki_production
+password=replace-with-production-database-password
+```
+
+```text
+username=holizuki_staging
+password=replace-with-staging-database-password
+```
+
+```bash
+sudoedit /root/production-db.env
+sudo kubectl -n database create secret generic holizuki-production-db \
+  --type=kubernetes.io/basic-auth \
+  --from-env-file=/root/production-db.env
+sudo kubectl -n database label secret holizuki-production-db cnpg.io/reload=true
+sudo shred --remove /root/production-db.env
+
+sudoedit /root/staging-db.env
+sudo kubectl -n database create secret generic holizuki-staging-db \
+  --type=kubernetes.io/basic-auth \
+  --from-env-file=/root/staging-db.env
+sudo kubectl -n database label secret holizuki-staging-db cnpg.io/reload=true
+sudo shred --remove /root/staging-db.env
+
+kubectl wait --for=condition=Ready cluster/holizuki-postgres -n database --timeout=10m
+kubectl wait --for=jsonpath='{.status.applied}'=true database/holizuki-staging -n database --timeout=5m
+```
+
+Then create each application runtime secret. `DB_PASSWORD` must duplicate the corresponding password above; this is necessary because Kubernetes secrets cannot be referenced across namespaces. Add the real mail provider values for production. Staging should use a non-delivering mail provider or `MAIL_MAILER=log`.
 
 ```text
 APP_KEY=base64:replace-me
+DB_PASSWORD=replace-with-the-matching-database-password
 MAIL_MAILER=log
 ```
 
@@ -195,7 +231,7 @@ sudo kubectl -n staging create secret generic holizuki-runtime \
 sudo shred --remove /root/staging-runtime.env
 ```
 
-Environment variables are read when a pod starts. After rotating either runtime secret outside a release, restart `holizuki-web` and `holizuki-worker` in that namespace and wait for both rollouts.
+Environment variables are read when a pod starts. Rotate the CloudNativePG and matching runtime-secret password together. Then restart the single `holizuki-web` Deployment in that environment and wait for its rollout; its pod contains the web, worker, and scheduler containers.
 
 Protect staging with Traefik basic authentication:
 
@@ -240,6 +276,9 @@ sudo chmod 0600 /srv/holizuki/config/*-overrides.yaml
 sudo install -o root -g root -m 0755 \
   .github/scripts/deploy-release.sh \
   /usr/local/bin/holizuki-deploy
+sudo install -o root -g root -m 0755 \
+  .github/scripts/control-staging.sh \
+  /usr/local/bin/holizuki-staging
 
 sudo .github/scripts/create-deployer-kubeconfig.sh \
   production https://127.0.0.1:6443 \
@@ -262,6 +301,14 @@ sudo -u deploy-staging test ! -r /srv/holizuki/kubeconfig/production.yaml
 
 The expected answers are `yes` and `no`.
 
+The staging control command uses the same namespace-scoped kubeconfig and lock as staging deployments:
+
+```bash
+sudo -u deploy-staging /usr/local/bin/holizuki-staging status
+sudo -u deploy-staging /usr/local/bin/holizuki-staging start
+sudo -u deploy-staging /usr/local/bin/holizuki-staging stop
+```
+
 ## 8. Configure GitHub environments
 
 Create protected GitHub environments named `staging` and `production`. Require a production reviewer, prevent self-approval, and disable administrator bypass where repository policy allows it. Set these values in each environment:
@@ -275,6 +322,8 @@ Create protected GitHub environments named `staging` and `production`. Require a
 | `DEPLOY_USER` | `deploy-production` | `deploy-staging` |
 
 Add `DEPLOY_SSH_PRIVATE_KEY` and a verified `DEPLOY_KNOWN_HOSTS` entry as environment secrets. Verify the SSH host-key fingerprint through a separate channel before saving it. Optionally set repository variable `CONTAINER_PLATFORMS`; it defaults to `linux/amd64`.
+
+Use the manual **Control staging** workflow to start, stop, or inspect staging. A release-candidate deployment always scales staging to one pod so it can run deployment verification. Stop it again after testing to release its 416 MiB steady memory request. The workflow shares the `deploy-staging` concurrency lock with releases, and a successful start verifies that the basic-auth-protected `/up` endpoint returns HTTP 401.
 
 ## 9. Monitoring
 
@@ -299,6 +348,8 @@ helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheu
 
 Set `monitoring.enabled: true` and `postgres.monitoringEnabled: true` in `platform-values.yaml`, then upgrade the platform chart again. Configure Alertmanager receivers before launch.
 
+The slim monitoring values allocate 11 GiB total and retain Prometheus data for seven days. Kubernetes cannot shrink existing PVCs; if the older, larger pre-launch monitoring claims already exist, retain their sizes or recreate only those disposable monitoring claims after confirming no metrics are needed.
+
 ## 10. Pre-launch checks
 
 ```bash
@@ -306,8 +357,12 @@ kubectl get pods --all-namespaces
 kubectl get pv,pvc --all-namespaces
 kubectl get clusterissuer
 kubectl get clusters.postgresql.cnpg.io --all-namespaces
+kubectl get databases.postgresql.cnpg.io -n database
 sudo -u deploy-production test -x /usr/local/bin/holizuki-deploy
 sudo -u deploy-staging test -x /usr/local/bin/holizuki-deploy
+sudo -u deploy-staging test -x /usr/local/bin/holizuki-staging
 ```
 
 Complete the backup setup and a staging restore drill in `backup-restore.md` before production receives real data.
+
+This layout intentionally starts with a fresh database cluster. If the retired pre-launch per-environment clusters still exist, confirm they contain no required data before deleting their retained clusters, PVCs, PVs, and host directories. They are not migrated or removed automatically.

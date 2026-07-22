@@ -6,7 +6,7 @@ application:
     cachePrefix: holizuki-production-cache-
 
 web:
-    replicas: 2
+    replicas: 1
 
 uploads:
     size: 30Gi
