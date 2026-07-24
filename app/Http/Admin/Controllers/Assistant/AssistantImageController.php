@@ -8,10 +8,13 @@ use App\Domain\Assistant\Actions\CompleteAssistantTurn;
 use App\Domain\Assistant\Actions\FailAssistantTurn;
 use App\Domain\Assistant\Actions\StartAssistantTurn;
 use App\Domain\Assistant\Enums\AssistantTaskType;
-use App\Domain\Assistant\Exceptions\AssistantBusyException;
 use App\Domain\Assistant\Prompts\ImageReviewPrompt;
 use App\Domain\Assistant\Services\AgentRequestFactory;
 use App\Domain\Assistant\Services\AgentRunner;
+use App\Domain\Assistant\Services\AssistantAvailability;
+use App\Domain\Assistant\Services\AssistantRunLease;
+use App\Domain\Assistant\Services\WorkspaceManager;
+use App\Domain\Assistant\ValueObjects\AgentRequest;
 use App\Domain\Publishing\Models\Post;
 use App\Http\Admin\Concerns\StreamsAssistantTurn;
 use App\Http\Admin\Requests\Assistant\ImageReviewRequest;
@@ -34,11 +37,14 @@ class AssistantImageController extends Controller
         private readonly FailAssistantTurn $failTurn,
         private readonly AgentRequestFactory $agentRequests,
         private readonly ImageReviewPrompt $imagePrompt,
+        private readonly AssistantAvailability $availability,
+        private readonly AssistantRunLease $runLease,
+        private readonly WorkspaceManager $workspace,
     ) {}
 
     public function __invoke(ImageReviewRequest $request, Post $post): StreamedResponse
     {
-        abort_unless(config()->boolean('assistant.enabled', true), 404);
+        $this->availability->ensureCanStart();
 
         abort_if(
             $post->media()->doesntExist() && $post->featured_image_path === null,
@@ -48,14 +54,23 @@ class AssistantImageController extends Controller
 
         $prompt = $this->imagePrompt->build();
 
-        try {
-            $turn = $this->startTurn->handle($post, AssistantTaskType::Images, 'Review the images: alt text, captions, and placement.');
-        } catch (AssistantBusyException $exception) {
-            abort(409, $exception->getMessage());
-        }
+        $turn = $this->startTurn->handle(
+            $post,
+            AssistantTaskType::Images,
+            'Review the images: alt text, captions, and placement.',
+            $request->requestId(),
+        );
 
-        $agentRequest = $this->agentRequests->forTurn($post, $turn, $prompt);
-
-        return $this->streamAssistantTurn($this->runner, $this->completeTurn, $this->failTurn, $post, $turn, $agentRequest);
+        return $this->streamAssistantTurn(
+            $this->runner,
+            $this->completeTurn,
+            $this->failTurn,
+            $this->runLease,
+            $this->availability,
+            $this->workspace,
+            $post,
+            $turn,
+            fn (): AgentRequest => $this->agentRequests->forTurn($post, $turn, $prompt),
+        );
     }
 }

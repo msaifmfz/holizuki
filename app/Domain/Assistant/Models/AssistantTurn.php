@@ -22,6 +22,8 @@ use Override;
  *
  * @property int $id
  * @property int $assistant_session_id
+ * @property string $run_token
+ * @property string $request_id
  * @property AssistantTaskType $task_type
  * @property AssistantTurnStatus $status
  * @property string $user_prompt
@@ -31,18 +33,33 @@ use Override;
  * @property array<string, mixed>|null $snapshot_meta
  * @property numeric-string|null $cost_usd
  * @property int|null $duration_ms
- * @property string|null $error
+ * @property string|null $result_subtype
+ * @property string|null $stop_reason
+ * @property array<string, mixed>|null $usage
+ * @property string|null $error_code
+ * @property string|null $error_message
+ * @property CarbonInterface|null $retry_at
+ * @property CarbonInterface|null $cancel_requested_at
+ * @property CarbonInterface|null $finished_at
  * @property CarbonInterface|null $created_at
  * @property CarbonInterface|null $updated_at
  */
 #[Fillable([
-    'assistant_session_id', 'task_type', 'status', 'user_prompt', 'assistant_message',
-    'context', 'snapshot_draft', 'snapshot_meta', 'cost_usd', 'duration_ms', 'error',
+    'assistant_session_id', 'run_token', 'request_id', 'task_type', 'status',
+    'user_prompt', 'assistant_message', 'context', 'snapshot_draft', 'snapshot_meta',
+    'result_subtype', 'stop_reason', 'usage', 'cost_usd', 'duration_ms',
+    'error_code', 'error_message', 'retry_at', 'cancel_requested_at', 'finished_at',
 ])]
 class AssistantTurn extends Model
 {
     /** @use HasFactory<AssistantTurnFactory> */
     use HasFactory;
+
+    /** @var array<string, mixed> */
+    #[Override]
+    protected $attributes = [
+        'status' => AssistantTurnStatus::Running->value,
+    ];
 
     protected static function newFactory(): AssistantTurnFactory
     {
@@ -70,8 +87,12 @@ class AssistantTurn extends Model
             'status' => AssistantTurnStatus::class,
             'context' => 'array',
             'snapshot_meta' => 'array',
+            'usage' => 'array',
             'cost_usd' => 'decimal:6',
             'duration_ms' => 'integer',
+            'retry_at' => 'datetime',
+            'cancel_requested_at' => 'datetime',
+            'finished_at' => 'datetime',
         ];
     }
 }

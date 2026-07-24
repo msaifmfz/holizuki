@@ -85,6 +85,18 @@ envFrom:
       name: {{ .Values.runtimeSecretName }}
 {{- end -}}
 
+{{- define "holizuki.webEnv" -}}
+{{ include "holizuki.env" . }}
+{{- if .Values.assistant.enabled }}
+env:
+  - name: CLAUDE_CODE_OAUTH_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: {{ .Values.assistant.oauthSecretName }}
+        key: {{ .Values.assistant.oauthSecretKey }}
+{{- end }}
+{{- end -}}
+
 {{- define "holizuki.migrationEnv" -}}
 envFrom:
   - secretRef:

@@ -34,6 +34,20 @@ data:
     max_idle_time 30s
   ASSISTANT_ENABLED: {{ .Values.assistant.enabled | quote }}
   ASSISTANT_TURN_TIMEOUT: {{ .Values.assistant.turnTimeout | quote }}
+  ASSISTANT_STARTUP_TIMEOUT: {{ .Values.assistant.startupTimeout | quote }}
+  ASSISTANT_IDLE_TIMEOUT: {{ .Values.assistant.idleTimeout | quote }}
+  ASSISTANT_RATE_LIMIT: {{ .Values.assistant.rateLimit | quote }}
+  ASSISTANT_GLOBAL_LOCK_SECONDS: {{ .Values.assistant.globalLockSeconds | quote }}
+  ASSISTANT_EXECUTION_GRACE_SECONDS: {{ .Values.assistant.executionGraceSeconds | quote }}
+  ASSISTANT_MODEL_CHAT: {{ .Values.assistant.models.chat | quote }}
+  ASSISTANT_MODEL_TRANSFORM: {{ .Values.assistant.models.transform | quote }}
+  ASSISTANT_MODEL_METADATA: {{ .Values.assistant.models.metadata | quote }}
+  ASSISTANT_MODEL_OUTLINE: {{ .Values.assistant.models.outline | quote }}
+  ASSISTANT_MODEL_IMAGES: {{ .Values.assistant.models.images | quote }}
+  ASSISTANT_MAX_STDOUT_BYTES: {{ .Values.assistant.limits.stdoutBytes | quote }}
+  ASSISTANT_MAX_STDERR_BYTES: {{ .Values.assistant.limits.stderrBytes | quote }}
+  ASSISTANT_MAX_LINE_BYTES: {{ .Values.assistant.limits.lineBytes | quote }}
+  ASSISTANT_MAX_NARRATION_BYTES: {{ .Values.assistant.limits.narrationBytes | quote }}
   # HOME anchors the Claude Code CLI's credentials and session files onto the
   # persisted uploads volume (mounted at /app/storage/app). The image sets
   # this too; pinning it here keeps the deployment self-documenting.

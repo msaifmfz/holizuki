@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace App\Domain\Assistant\Exceptions;
 
+use Illuminate\Contracts\Debug\ShouldntReport;
 use RuntimeException;
 
-class StaleChangeException extends RuntimeException
+class StaleChangeException extends RuntimeException implements ShouldntReport
 {
     public static function becauseContentMoved(): self
     {

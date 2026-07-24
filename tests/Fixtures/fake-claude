@@ -7,6 +7,16 @@ prompt=$(cat)
 
 printf '%s' "$prompt" > prompt.txt
 printf '%s' "$HOME" > home.txt
+printf '%s\n' "$@" > arguments.txt
+{
+    printf 'app_key=%s\n' "${APP_KEY-unset}"
+    printf 'anthropic_api_key=%s\n' "${ANTHROPIC_API_KEY-unset}"
+    if [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
+        printf 'oauth=set\n'
+    else
+        printf 'oauth=unset\n'
+    fi
+} > environment.txt
 printf 'touched' > touched.txt
 
 echo '{"type":"system","subtype":"init","session_id":"fixture-session"}'

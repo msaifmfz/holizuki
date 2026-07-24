@@ -49,6 +49,7 @@ export default function SeoCard({
                     <GenerateButton
                         label="Generate all"
                         busy={assistant.generating}
+                        disabled={!assistant.canGenerate}
                         onClick={() =>
                             void assistant.generateMetadata([
                                 'seo_title',
@@ -98,7 +99,12 @@ export default function SeoCard({
                     {assistant.suggestions.seo_title && (
                         <FieldSuggestionChip
                             change={assistant.suggestions.seo_title}
-                            busy={assistant.deciding}
+                            busy={assistant.isDeciding(
+                                assistant.suggestions.seo_title.id,
+                            )}
+                            error={assistant.decisionError(
+                                assistant.suggestions.seo_title.id,
+                            )}
                             onAccept={assistant.accept}
                             onReject={assistant.reject}
                         />
@@ -138,7 +144,12 @@ export default function SeoCard({
                     {assistant.suggestions.meta_description && (
                         <FieldSuggestionChip
                             change={assistant.suggestions.meta_description}
-                            busy={assistant.deciding}
+                            busy={assistant.isDeciding(
+                                assistant.suggestions.meta_description.id,
+                            )}
+                            error={assistant.decisionError(
+                                assistant.suggestions.meta_description.id,
+                            )}
                             onAccept={assistant.accept}
                             onReject={assistant.reject}
                         />
@@ -195,7 +206,12 @@ export default function SeoCard({
                             {assistant.suggestions.og_title && (
                                 <FieldSuggestionChip
                                     change={assistant.suggestions.og_title}
-                                    busy={assistant.deciding}
+                                    busy={assistant.isDeciding(
+                                        assistant.suggestions.og_title.id,
+                                    )}
+                                    error={assistant.decisionError(
+                                        assistant.suggestions.og_title.id,
+                                    )}
                                     onAccept={assistant.accept}
                                     onReject={assistant.reject}
                                 />
@@ -227,7 +243,12 @@ export default function SeoCard({
                                     change={
                                         assistant.suggestions.og_description
                                     }
-                                    busy={assistant.deciding}
+                                    busy={assistant.isDeciding(
+                                        assistant.suggestions.og_description.id,
+                                    )}
+                                    error={assistant.decisionError(
+                                        assistant.suggestions.og_description.id,
+                                    )}
                                     onAccept={assistant.accept}
                                     onReject={assistant.reject}
                                 />

@@ -81,3 +81,17 @@ test('appending to an empty draft yields a single insertion hunk', function (): 
         ->and($hunks[0]['anchor_before'])->toBeNull()
         ->and($hunks[0]['anchor_after'])->toBeNull();
 });
+
+test('large block sets fall back to one bounded whole-document hunk', function (): void {
+    $hunks = new BlockDiffer(2)->diff(
+        "One.\n\nTwo.\n\nThree.\n",
+        "One!\n\nTwo!\n\nThree!\n",
+    );
+
+    expect($hunks)->toBe([[
+        'old_blocks' => "One.\n\nTwo.\n\nThree.",
+        'new_blocks' => "One!\n\nTwo!\n\nThree!",
+        'anchor_before' => null,
+        'anchor_after' => null,
+    ]]);
+});

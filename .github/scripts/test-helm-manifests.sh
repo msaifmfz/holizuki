@@ -14,6 +14,7 @@ trap cleanup EXIT
 
 production_manifest="$temporary_directory/production.yaml"
 staging_manifest="$temporary_directory/staging.yaml"
+assistant_disabled_manifest="$temporary_directory/assistant-disabled.yaml"
 platform_manifest="$temporary_directory/platform.yaml"
 
 helm template holizuki "$repository_root/deploy/helm/holizuki" \
@@ -24,6 +25,11 @@ helm template holizuki "$repository_root/deploy/helm/holizuki" \
     --namespace staging \
     --values "$repository_root/deploy/helm/holizuki/values-staging.yaml" \
     >"$staging_manifest"
+helm template holizuki "$repository_root/deploy/helm/holizuki" \
+    --namespace production \
+    --values "$repository_root/deploy/helm/holizuki/values-production.yaml" \
+    --set assistant.enabled=false \
+    >"$assistant_disabled_manifest"
 helm template holizuki-platform "$repository_root/deploy/helm/platform" \
     --set backup.enabled=true \
     --set monitoring.enabled=true \
@@ -38,16 +44,37 @@ for manifest in "$production_manifest" "$staging_manifest"; do
     fi
     grep -Fq 'replicas: 1' "$manifest"
     grep -Fq '        - name: optimize' "$manifest"
+    grep -Fq '        - name: assistant-doctor' "$manifest"
     grep -Fq '        - name: web' "$manifest"
     grep -Fq '        - name: worker' "$manifest"
     grep -Fq '        - name: scheduler' "$manifest"
     grep -Fq 'CACHE_STORE: "database"' "$manifest"
+    grep -Fq 'ASSISTANT_RATE_LIMIT: "6"' "$manifest"
+    grep -Fq 'ASSISTANT_MODEL_CHAT: "claude-sonnet-4-6"' "$manifest"
+    grep -Fq 'ASSISTANT_STARTUP_TIMEOUT: "30"' "$manifest"
+    [[ "$(grep -c 'name: CLAUDE_CODE_OAUTH_TOKEN' "$manifest")" -eq 2 ]]
+    grep -Fq 'name: holizuki-assistant' "$manifest"
+    grep -Fq 'terminationGracePeriodSeconds: 360' "$manifest"
     grep -Fq 'DB_HOST: "holizuki-postgres-rw.database.svc.cluster.local"' "$manifest"
     if grep -Fq 'holizuki-postgres-app' "$manifest"; then
         printf 'Application manifest references the retired database secret.\n' >&2
         exit 1
     fi
 done
+
+grep -Fq 'ASSISTANT_ENABLED: "false"' "$assistant_disabled_manifest"
+if grep -Fq 'name: assistant-doctor' "$assistant_disabled_manifest"; then
+    printf 'Disabled assistant manifest unexpectedly contains the runtime doctor.\n' >&2
+    exit 1
+fi
+if grep -Fq 'name: CLAUDE_CODE_OAUTH_TOKEN' "$assistant_disabled_manifest"; then
+    printf 'Disabled assistant manifest unexpectedly exposes the OAuth token.\n' >&2
+    exit 1
+fi
+if grep -Fq 'name: holizuki-assistant' "$assistant_disabled_manifest"; then
+    printf 'Disabled assistant manifest unexpectedly requires the OAuth secret.\n' >&2
+    exit 1
+fi
 
 grep -Fq 'DB_DATABASE: "holizuki_production"' "$production_manifest"
 grep -Fq 'DB_USERNAME: "holizuki_production"' "$production_manifest"

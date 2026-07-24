@@ -46,6 +46,18 @@ test('the step is validated and start requires a topic', function (): void {
         ->assertUnprocessable();
 });
 
+test('the draft step reports when no approved outline is ready', function (): void {
+    fakeOutlineRunner([]);
+
+    $this->actingAs($this->user)
+        ->postJson(route('posts.assistant.outline', $this->post), ['step' => 'draft'])
+        ->assertUnprocessable()
+        ->assertJson([
+            'code' => 'outline_not_ready',
+            'message' => 'Create and approve an outline before drafting the article.',
+        ]);
+});
+
 test('the start step sends the topic and records the outline turn', function (): void {
     $runner = fakeOutlineRunner([
         AgentEvent::text("Here's a working outline — happy to adjust."),
@@ -77,7 +89,13 @@ test('the start step sends the topic and records the outline turn', function ():
 });
 
 test('the draft step resumes the session and proposes the drafted body', function (): void {
-    $session = AssistantSession::factory()->for($this->post, 'post')->create();
+    $session = AssistantSession::factory()->for($this->post, 'post')->create([
+        'resume_ready' => true,
+        'conversation_model' => config('assistant.models.outline'),
+        'outline_markdown' => "Working title\n\n## Section one\n",
+        'outline_ready' => true,
+        'outline_version' => 1,
+    ]);
     AssistantTurn::factory()->for($session, 'session')->create([
         'task_type' => AssistantTaskType::Outline,
         'status' => AssistantTurnStatus::Completed,
@@ -138,4 +156,55 @@ test('outline.md survives workspace re-materialization between steps', function 
         ->streamedContent();
 
     expect($stream)->toContain('Outline still present.');
+});
+
+test('a failed replacement outline preserves the last usable outline', function (): void {
+    $session = AssistantSession::factory()->for($this->post, 'post')->create([
+        'resume_ready' => true,
+        'conversation_model' => config('assistant.models.outline'),
+        'outline_markdown' => "## Existing plan\n",
+        'outline_ready' => true,
+        'outline_version' => 1,
+    ]);
+    fakeOutlineRunner([
+        AgentEvent::error('The assistant failed.', 'process_failed'),
+    ]);
+
+    $stream = $this->actingAs($this->user)
+        ->post(route('posts.assistant.outline', $this->post), [
+            'step' => 'start',
+            'message' => 'Try a different plan',
+        ])
+        ->assertSuccessful()
+        ->streamedContent();
+
+    expect($stream)->toContain('event: error')
+        ->and($session->refresh()->outline_markdown)->toBe("## Existing plan\n")
+        ->and($session->outline_ready)->toBeTrue()
+        ->and($session->outline_version)->toBe(1);
+});
+
+test('an outline clarification hides draft readiness without deleting the saved outline', function (): void {
+    $session = AssistantSession::factory()->for($this->post, 'post')->create([
+        'resume_ready' => true,
+        'conversation_model' => config('assistant.models.outline'),
+        'outline_markdown' => "## Existing plan\n",
+        'outline_ready' => true,
+        'outline_version' => 1,
+    ]);
+    fakeOutlineRunner([
+        AgentEvent::result(isError: false, text: 'I need one more detail.', costUsd: null, durationMs: 100),
+    ]);
+
+    $this->actingAs($this->user)
+        ->post(route('posts.assistant.outline', $this->post), [
+            'step' => 'start',
+            'message' => 'Try a different plan',
+        ])
+        ->assertSuccessful()
+        ->streamedContent();
+
+    expect($session->refresh()->outline_markdown)->toBe("## Existing plan\n")
+        ->and($session->outline_ready)->toBeFalse()
+        ->and($session->outline_version)->toBe(1);
 });

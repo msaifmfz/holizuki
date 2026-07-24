@@ -42,15 +42,24 @@ export function threadFromTurns(
             activity: null,
         });
 
+        const isActive =
+            turn.status === 'running' || turn.status === 'cancelling';
+        const isError = turn.status === 'failed' || turn.status === 'cancelled';
+
         entries.push({
             key: `turn-${turn.id}-assistant`,
             role: 'assistant',
-            text:
-                turn.status === 'failed' || turn.status === 'cancelled'
-                    ? (turn.error ?? 'The assistant could not finish.')
-                    : (turn.assistant_message ?? '…'),
-            state: turn.status === 'completed' ? 'done' : 'error',
-            activity: null,
+            text: isError
+                ? (turn.error ?? 'The assistant could not finish.')
+                : isActive
+                  ? (turn.assistant_message ?? '')
+                  : (turn.assistant_message ?? '…'),
+            state: isActive
+                ? 'streaming'
+                : turn.status === 'completed'
+                  ? 'done'
+                  : 'error',
+            activity: turn.status === 'cancelling' ? 'Stopping…' : null,
         });
     }
 

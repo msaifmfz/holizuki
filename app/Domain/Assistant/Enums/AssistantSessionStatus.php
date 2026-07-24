@@ -8,4 +8,5 @@ enum AssistantSessionStatus: string
 {
     case Idle = 'idle';
     case Running = 'running';
+    case Cancelling = 'cancelling';
 }

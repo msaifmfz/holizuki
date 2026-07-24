@@ -233,6 +233,38 @@ sudo shred --remove /root/staging-runtime.env
 
 Environment variables are read when a pod starts. Rotate the CloudNativePG and matching runtime-secret password together. Then restart the single `holizuki-web` Deployment in that environment and wait for its rollout; its pod contains the web, worker, and scheduler containers.
 
+The AI writing assistant uses a dedicated inference-only OAuth token. On a trusted workstation, run `claude setup-token`. For each environment, paste the generated token into a temporary root-owned file with this shape:
+
+```text
+CLAUDE_CODE_OAUTH_TOKEN=replace-with-the-generated-token
+```
+
+Create the dedicated Secret before the first application deployment:
+
+```bash
+for namespace in production staging; do
+  sudoedit "/root/${namespace}-assistant.env"
+  sudo kubectl -n "$namespace" create secret generic holizuki-assistant \
+    --from-env-file="/root/${namespace}-assistant.env"
+  sudo shred --remove "/root/${namespace}-assistant.env"
+done
+```
+
+The setup token expires after one year and Secret-backed environment variables are read only when a pod starts. Before expiry, run `claude setup-token` again on the trusted workstation, paste the replacement into each temporary file, replace the Secret, and restart each web Deployment that uses it:
+
+```bash
+for namespace in production staging; do
+  sudoedit "/root/${namespace}-assistant.env"
+  sudo kubectl -n "$namespace" create secret generic holizuki-assistant \
+    --from-env-file="/root/${namespace}-assistant.env" \
+    --dry-run=client -o yaml |
+    sudo kubectl apply -f -
+  sudo shred --remove "/root/${namespace}-assistant.env"
+  sudo kubectl -n "$namespace" rollout restart deployment/holizuki-web
+  sudo kubectl -n "$namespace" rollout status deployment/holizuki-web --timeout=10m
+done
+```
+
 Protect staging with Traefik basic authentication:
 
 ```bash

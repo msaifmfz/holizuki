@@ -9,22 +9,32 @@ import { Textarea } from '@/components/ui/textarea';
  */
 export default function OutlineWizard({
     busy,
+    disabled = false,
     onStart,
 }: {
     busy: boolean;
-    onStart: (topic: string) => void;
+    disabled?: boolean;
+    onStart: (topic: string) => Promise<boolean>;
 }) {
     const [topic, setTopic] = useState('');
+    const [submitting, setSubmitting] = useState(false);
 
-    const start = () => {
+    const start = async (): Promise<void> => {
         const trimmed = topic.trim();
 
-        if (trimmed === '' || busy) {
+        if (trimmed === '' || busy || disabled || submitting) {
             return;
         }
 
-        setTopic('');
-        onStart(trimmed);
+        setSubmitting(true);
+
+        try {
+            if (await onStart(trimmed)) {
+                setTopic('');
+            }
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     return (
@@ -43,6 +53,9 @@ export default function OutlineWizard({
             <Textarea
                 value={topic}
                 rows={3}
+                maxLength={10_000}
+                disabled={disabled}
+                aria-label="Article topic and notes"
                 placeholder="e.g. Why home espresso beats cafe espresso — aimed at beginners, mention my Gaggia Classic setup"
                 onChange={(event) => setTopic(event.target.value)}
                 onKeyDown={(event) => {
@@ -51,15 +64,17 @@ export default function OutlineWizard({
                         (event.metaKey || event.ctrlKey)
                     ) {
                         event.preventDefault();
-                        start();
+                        void start();
                     }
                 }}
             />
             <div>
                 <Button
                     type="button"
-                    disabled={busy || topic.trim() === ''}
-                    onClick={start}
+                    disabled={
+                        busy || disabled || submitting || topic.trim() === ''
+                    }
+                    onClick={() => void start()}
                 >
                     <Sparkles />
                     {busy ? 'Thinking…' : 'Outline it'}

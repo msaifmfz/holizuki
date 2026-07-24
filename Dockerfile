@@ -3,23 +3,28 @@
 ARG COMPOSER_BASE_IMAGE="composer:2@sha256:5946476338742b200bb9ff88f8be56275ddae4b3949c72305cb0dbf10cfcb760"
 ARG NODE_BASE_IMAGE="node:24-bookworm-slim@sha256:cb4e8f7c443347358b7875e717c29e27bf9befc8f5a26cf18af3c3dec80e58c5"
 ARG PHP_BASE_IMAGE="dunglas/frankenphp:1-php8.5-trixie@sha256:2d970ecf0cc0f69039cb1bb749d5e84a20900fddf6c16823a768f6dc38f4a084"
+ARG CLAUDE_CLI_BASE_IMAGE="debian:trixie-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd"
 
 FROM ${COMPOSER_BASE_IMAGE} AS composer
 
 FROM ${NODE_BASE_IMAGE} AS node
 
-FROM debian:trixie-slim AS claude-cli
+FROM ${CLAUDE_CLI_BASE_IMAGE} AS claude-cli
 
-# Pin via --build-arg CLAUDE_CODE_VERSION=x.y.z; the native installer needs
-# no Node at runtime — the standalone binary is copied into the final image.
-ARG CLAUDE_CODE_VERSION="latest"
+# The native installer needs no Node at runtime. Upgrades are deliberate:
+# change this pin together with the stream protocol and container tests.
+ARG CLAUDE_CODE_VERSION="2.1.218"
+ARG CLAUDE_INSTALLER_SHA256="cde4f1702d3b1695f92b73d26888364e17bca476e17f0fd676484c951d36c125"
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
-    && curl -fsSL https://claude.ai/install.sh | bash -s -- "${CLAUDE_CODE_VERSION}" \
+    && curl -fsSL https://claude.ai/install.sh -o /tmp/claude-install.sh \
+    && echo "${CLAUDE_INSTALLER_SHA256}  /tmp/claude-install.sh" | sha256sum --check --strict \
+    && bash /tmp/claude-install.sh "${CLAUDE_CODE_VERSION}" \
     && cp -L /root/.local/bin/claude /usr/local/bin/claude \
-    && /usr/local/bin/claude --version
+    && test "$(/usr/local/bin/claude --version)" = "${CLAUDE_CODE_VERSION} (Claude Code)" \
+    && rm -f /tmp/claude-install.sh
 
 FROM ${PHP_BASE_IMAGE} AS php-base
 
@@ -86,6 +91,7 @@ LABEL org.opencontainers.image.source="https://github.com/msaifmfz/holizuki" \
 ENV APP_ENV=production \
     APP_DEBUG=false \
     ASSISTANT_CLAUDE_BIN=/usr/local/bin/claude \
+    ASSISTANT_CLAUDE_VERSION=2.1.218 \
     HOME=/app/storage/app/assistant/home \
     LOG_CHANNEL=stderr \
     SERVER_NAME=:8080 \

@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace App\Domain\Assistant\Models;
 
 use App\Domain\Assistant\Enums\AssistantSessionStatus;
-use App\Domain\Assistant\Enums\AssistantTaskType;
-use App\Domain\Assistant\Enums\AssistantTurnStatus;
 use App\Domain\Publishing\Models\Post;
 use Carbon\CarbonInterface;
 use Database\Factories\AssistantSessionFactory;
@@ -25,15 +23,34 @@ use Override;
  * @property int $post_id
  * @property string $claude_session_id
  * @property AssistantSessionStatus $status
+ * @property string|null $active_run_token
+ * @property bool $resume_ready
+ * @property string|null $conversation_model
+ * @property string|null $outline_markdown
+ * @property bool $outline_ready
+ * @property int $outline_version
  * @property CarbonInterface|null $turn_started_at
  * @property CarbonInterface|null $created_at
  * @property CarbonInterface|null $updated_at
  */
-#[Fillable(['post_id', 'claude_session_id', 'status', 'turn_started_at'])]
+#[Fillable([
+    'post_id', 'claude_session_id', 'status', 'active_run_token', 'resume_ready',
+    'conversation_model', 'outline_markdown', 'outline_ready', 'outline_version',
+    'turn_started_at',
+])]
 class AssistantSession extends Model
 {
     /** @use HasFactory<AssistantSessionFactory> */
     use HasFactory;
+
+    /** @var array<string, mixed> */
+    #[Override]
+    protected $attributes = [
+        'status' => AssistantSessionStatus::Idle->value,
+        'resume_ready' => false,
+        'outline_ready' => false,
+        'outline_version' => 0,
+    ];
 
     protected static function newFactory(): AssistantSessionFactory
     {
@@ -52,25 +69,15 @@ class AssistantSession extends Model
         return $this->hasMany(AssistantTurn::class);
     }
 
-    /**
-     * Whether a conversational turn has completed before the given one —
-     * i.e. whether the Claude Code session file exists to `--resume`.
-     */
-    public function hasConversationBefore(int $excludedTurnId): bool
-    {
-        return $this->turns()
-            ->whereKeyNot($excludedTurnId)
-            ->where('status', AssistantTurnStatus::Completed)
-            ->whereIn('task_type', [AssistantTaskType::Chat, AssistantTaskType::Outline])
-            ->exists();
-    }
-
     /** @return array<string, string> */
     #[Override]
     protected function casts(): array
     {
         return [
             'status' => AssistantSessionStatus::class,
+            'resume_ready' => 'boolean',
+            'outline_ready' => 'boolean',
+            'outline_version' => 'integer',
             'turn_started_at' => 'datetime',
         ];
     }

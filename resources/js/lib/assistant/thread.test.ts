@@ -64,6 +64,21 @@ describe('threadFromTurns', () => {
 
         expect(entries[1].text).toBe('The assistant could not finish.');
     });
+
+    it('restores an active turn as a streaming entry after reload', () => {
+        const entries = threadFromTurns([
+            turn({
+                id: 1,
+                status: 'running',
+                assistant_message: null,
+            }),
+        ]);
+
+        expect(entries[1]).toMatchObject({
+            state: 'streaming',
+            text: '',
+        });
+    });
 });
 
 describe('outlineReadyFromTurns', () => {

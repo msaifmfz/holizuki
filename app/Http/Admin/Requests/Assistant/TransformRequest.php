@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace App\Http\Admin\Requests\Assistant;
 
 use App\Domain\Assistant\Prompts\TransformPrompt;
+use App\Http\Admin\Requests\Assistant\Concerns\ResolvesAssistantRequestId;
 use App\Http\AuthenticatedRequest;
 use Illuminate\Validation\Rule;
 
 class TransformRequest extends AuthenticatedRequest
 {
+    use ResolvesAssistantRequestId;
+
     public function authorize(): bool
     {
         return $this->authenticatedUser()->can('update', $this->boundPost());
@@ -22,6 +25,7 @@ class TransformRequest extends AuthenticatedRequest
             'selection' => ['required', 'string', 'max:20000'],
             'preset' => ['required', 'string', Rule::in(TransformPrompt::PRESETS)],
             'instruction' => ['nullable', 'string', 'max:1000', 'required_if:preset,custom'],
+            ...$this->assistantRequestIdRules(),
         ];
     }
 

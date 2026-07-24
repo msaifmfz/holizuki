@@ -21,6 +21,8 @@ docker run --rm --entrypoint php "$image" -r \
     'exit(extension_loaded("pdo_pgsql") && extension_loaded("intl") && extension_loaded("pcntl") && extension_loaded("zip") ? 0 : 1);'
 [[ "$(docker run --rm --entrypoint php "$image" -r 'echo ini_get("opcache.enable_cli");')" == '0' ]]
 docker run --rm --entrypoint php "$image" artisan about --only=environment >/dev/null
+[[ "$(docker run --rm --entrypoint /usr/local/bin/claude "$image" --version)" == '2.1.218 (Claude Code)' ]]
+[[ "$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$image" | grep '^ASSISTANT_CLAUDE_VERSION=')" == 'ASSISTANT_CLAUDE_VERSION=2.1.218' ]]
 docker run --rm --entrypoint /bin/sh "$image" -c \
     'test ! -e /app/.env && test ! -d /app/tests && ! command -v composer && ! command -v node'
 

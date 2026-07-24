@@ -1,5 +1,7 @@
 <?php
 
+use App\Domain\Assistant\Actions\RequestAssistantCancellation;
+use App\Domain\Assistant\Enums\AgentFailureCode;
 use App\Domain\Assistant\Enums\AssistantChangeType;
 use App\Domain\Assistant\Enums\AssistantSessionStatus;
 use App\Domain\Assistant\Enums\AssistantTaskType;
@@ -13,6 +15,7 @@ use App\Domain\Identity\Models\User;
 use App\Domain\Publishing\Models\Post;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Tests\Support\FakeAgentRunner;
 
 beforeEach(function (): void {
@@ -58,6 +61,36 @@ test('a message is required', function (): void {
         ->assertUnprocessable();
 });
 
+test('a duplicate request id returns the original turn state', function (): void {
+    $requestId = (string) Str::uuid();
+
+    fakeChatRunner([
+        AgentEvent::result(isError: false, text: 'Done.', costUsd: null, durationMs: 50),
+    ]);
+
+    $this->actingAs($this->user)
+        ->post(route('posts.assistant.chat', $this->post), [
+            'message' => 'Run this once.',
+            'request_id' => $requestId,
+        ])
+        ->assertSuccessful()
+        ->streamedContent();
+
+    $turn = AssistantTurn::query()->sole();
+
+    $this->actingAs($this->user)
+        ->postJson(route('posts.assistant.chat', $this->post), [
+            'message' => 'Do not run this twice.',
+            'request_id' => $requestId,
+        ])
+        ->assertConflict()
+        ->assertJson([
+            'code' => 'duplicate_request',
+            'turn_id' => $turn->id,
+            'status' => AssistantTurnStatus::Completed->value,
+        ]);
+});
+
 test('a chat turn streams narration and proposes body changes from draft edits', function (): void {
     $runner = fakeChatRunner([
         AgentEvent::text('Let me punch up that opening.'),
@@ -84,7 +117,7 @@ test('a chat turn streams narration and proposes body changes from draft edits',
         ->toContain('event: done');
 
     expect($runner->lastRequest?->model)->toBe(config('assistant.models.chat'))
-        ->and($runner->lastRequest?->prompt)->toBe('Make the opening more exciting');
+        ->and($runner->lastRequest?->prompt)->toContain('Make the opening more exciting');
 
     $turn = AssistantTurn::query()->firstOrFail();
     expect($turn->task_type)->toBe(AssistantTaskType::Chat)
@@ -122,7 +155,10 @@ test('the first chat turn starts fresh and later turns resume the session', func
 });
 
 test('a failed resume rotates the session id so the next message starts fresh', function (): void {
-    $session = AssistantSession::factory()->for($this->post, 'post')->create();
+    $session = AssistantSession::factory()->for($this->post, 'post')->create([
+        'resume_ready' => true,
+        'conversation_model' => config('assistant.models.chat'),
+    ]);
     AssistantTurn::factory()->for($session, 'session')->create([
         'task_type' => AssistantTaskType::Chat,
         'status' => AssistantTurnStatus::Completed,
@@ -130,7 +166,10 @@ test('a failed resume rotates the session id so the next message starts fresh', 
     $originalSessionId = $session->claude_session_id;
 
     fakeChatRunner([
-        AgentEvent::error('No conversation found with session ID: '.$originalSessionId),
+        AgentEvent::error(
+            AgentFailureCode::SessionNotFound->message(),
+            AgentFailureCode::SessionNotFound->value,
+        ),
     ]);
 
     $stream = $this->actingAs($this->user)
@@ -162,4 +201,25 @@ test('metadata suggestions coming out of a chat turn are recorded too', function
     $change = AssistantTurn::query()->firstOrFail()->changes()->firstOrFail();
     expect($change->type)->toBe(AssistantChangeType::Title)
         ->and($change->payload['new'])->toBe('A collar-grabbing headline');
+});
+
+test('cancellation wins when the runner reports a late success', function (): void {
+    fakeChatRunner([
+        function (): void {
+            resolve(RequestAssistantCancellation::class)->handle($this->post);
+        },
+        AgentEvent::result(isError: false, text: 'Too late.', costUsd: null, durationMs: 100),
+    ]);
+
+    $stream = $this->actingAs($this->user)
+        ->post(route('posts.assistant.chat', $this->post), ['message' => 'Start then stop'])
+        ->assertSuccessful()
+        ->streamedContent();
+
+    $turn = AssistantTurn::query()->firstOrFail();
+
+    expect($stream)->toContain('event: error')
+        ->toContain(AgentFailureCode::Cancelled->value)
+        ->and($turn->status)->toBe(AssistantTurnStatus::Cancelled)
+        ->and($turn->session()->firstOrFail()->status)->toBe(AssistantSessionStatus::Idle);
 });

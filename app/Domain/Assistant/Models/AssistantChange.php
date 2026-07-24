@@ -38,6 +38,12 @@ class AssistantChange extends Model
     /** @use HasFactory<AssistantChangeFactory> */
     use HasFactory;
 
+    /** @var array<string, mixed> */
+    #[Override]
+    protected $attributes = [
+        'status' => AssistantChangeStatus::Proposed->value,
+    ];
+
     protected static function newFactory(): AssistantChangeFactory
     {
         return AssistantChangeFactory::new();

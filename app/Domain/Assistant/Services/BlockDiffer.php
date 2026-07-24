@@ -12,6 +12,8 @@ namespace App\Domain\Assistant\Services;
  */
 class BlockDiffer
 {
+    public function __construct(private readonly int $maximumBlocks = 500) {}
+
     /** @return list<array{old_blocks: string, new_blocks: string, anchor_before: string|null, anchor_after: string|null}> */
     public function diff(string $old, string $new): array
     {
@@ -20,6 +22,15 @@ class BlockDiffer
 
         if ($oldBlocks === $newBlocks) {
             return [];
+        }
+
+        if (count($oldBlocks) > $this->maximumBlocks || count($newBlocks) > $this->maximumBlocks) {
+            return [[
+                'old_blocks' => implode("\n\n", $oldBlocks),
+                'new_blocks' => implode("\n\n", $newBlocks),
+                'anchor_before' => null,
+                'anchor_after' => null,
+            ]];
         }
 
         $hunks = [];

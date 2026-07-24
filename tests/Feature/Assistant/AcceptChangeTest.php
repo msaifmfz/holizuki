@@ -2,11 +2,15 @@
 
 use App\Domain\Assistant\Enums\AssistantChangeStatus;
 use App\Domain\Assistant\Enums\AssistantChangeType;
+use App\Domain\Assistant\Enums\AssistantSessionStatus;
+use App\Domain\Assistant\Enums\AssistantTurnStatus;
 use App\Domain\Assistant\Models\AssistantChange;
 use App\Domain\Assistant\Models\AssistantSession;
 use App\Domain\Assistant\Models\AssistantTurn;
 use App\Domain\Identity\Models\User;
+use App\Domain\Publishing\Enums\PostRevisionEvent;
 use App\Domain\Publishing\Models\Post;
+use App\Domain\Taxonomy\Models\Category;
 use Illuminate\Support\Facades\Storage;
 
 beforeEach(function (): void {
@@ -53,6 +57,14 @@ test('accepting a scalar change saves it through the post pipeline', function ()
         'new' => 'A crisp new excerpt.',
     ]);
     $previousVersion = $this->post->lock_version;
+    $category = Category::factory()->create();
+    $this->post->forceFill([
+        'slug_is_manual' => true,
+        'category_id' => $category->id,
+        'author_id' => $this->user->id,
+        'canonical_url' => 'https://example.com/canonical',
+        'noindex' => true,
+    ])->save();
 
     $response = $this->actingAs($this->user)
         ->postJson(route('posts.assistant.changes.accept', [$this->post, $change]));
@@ -60,11 +72,61 @@ test('accepting a scalar change saves it through the post pipeline', function ()
     $response->assertSuccessful()
         ->assertJsonPath('change.status', 'accepted')
         ->assertJsonPath('post.excerpt', 'A crisp new excerpt.')
-        ->assertJsonPath('post.lock_version', $previousVersion + 1);
+        ->assertJsonPath('post.lock_version', $previousVersion + 1)
+        ->assertJsonPath('post.slug_is_manual', true)
+        ->assertJsonPath('post.category_id', $category->id)
+        ->assertJsonPath('post.author_id', $this->user->id)
+        ->assertJsonPath('post.canonical_url', 'https://example.com/canonical')
+        ->assertJsonPath('post.noindex', true)
+        ->assertJsonStructure([
+            'post' => [
+                'lock_version',
+                'slug',
+                'updated_at',
+                'last_editor',
+                'title',
+                'slug_is_manual',
+                'excerpt',
+                'body',
+                'featured_image_alt',
+                'featured_image_caption',
+                'category_id',
+                'author_id',
+                'tags',
+                'seo_title',
+                'meta_description',
+                'canonical_url',
+                'og_title',
+                'og_description',
+                'noindex',
+            ],
+        ]);
 
     expect($this->post->refresh()->excerpt)->toBe('A crisp new excerpt.')
         ->and($change->refresh()->status)->toBe(AssistantChangeStatus::Accepted)
         ->and($change->decided_at)->not->toBeNull();
+});
+
+test('accepting is blocked while the session has an active turn', function (): void {
+    $change = makeChange($this->post, $this->turn, AssistantChangeType::Excerpt, [
+        'old' => 'Original excerpt.',
+        'new' => 'A crisp new excerpt.',
+    ]);
+    $session = $this->turn->session()->firstOrFail();
+    $activeTurn = AssistantTurn::factory()->running()->for($session, 'session')->create();
+    $session->forceFill([
+        'status' => AssistantSessionStatus::Running,
+        'active_run_token' => $activeTurn->run_token,
+        'turn_started_at' => now(),
+    ])->save();
+
+    $this->actingAs($this->user)
+        ->postJson(route('posts.assistant.changes.accept', [$this->post, $change]))
+        ->assertConflict();
+
+    expect($this->post->refresh()->excerpt)->toBe('Original excerpt.')
+        ->and($change->refresh()->status)->toBe(AssistantChangeStatus::Proposed)
+        ->and($activeTurn->refresh()->status)->toBe(AssistantTurnStatus::Running);
 });
 
 test('accepting a tags change syncs tag names', function (): void {
@@ -81,6 +143,34 @@ test('accepting a tags change syncs tag names', function (): void {
     expect($this->post->tags()->pluck('name')->all())->toEqualCanonicalizing(['laravel', 'queues']);
 });
 
+test('a tags change is stale when the author changed the current tags', function (): void {
+    $this->post->tags()->create(['name' => 'Current', 'slug' => 'current']);
+    $change = makeChange($this->post, $this->turn, AssistantChangeType::Tags, [
+        'old' => [],
+        'new' => ['replacement'],
+    ]);
+
+    $this->actingAs($this->user)
+        ->postJson(route('posts.assistant.changes.accept', [$this->post, $change]))
+        ->assertConflict()
+        ->assertJsonPath('code', 'stale_change');
+
+    expect($this->post->tags()->pluck('name')->all())->toBe(['Current']);
+});
+
+test('a tags change cannot bypass publishing limits', function (): void {
+    $change = makeChange($this->post, $this->turn, AssistantChangeType::Tags, [
+        'old' => [],
+        'new' => array_fill(0, 11, 'tag'),
+    ]);
+
+    $this->actingAs($this->user)
+        ->postJson(route('posts.assistant.changes.accept', [$this->post, $change]))
+        ->assertConflict();
+
+    expect($this->post->tags()->count())->toBe(0);
+});
+
 test('a scalar change is stale when the author already edited the field', function (): void {
     $change = makeChange($this->post, $this->turn, AssistantChangeType::Excerpt, [
         'old' => 'Some other base value.',
@@ -89,7 +179,7 @@ test('a scalar change is stale when the author already edited the field', functi
 
     $this->actingAs($this->user)
         ->postJson(route('posts.assistant.changes.accept', [$this->post, $change]))
-        ->assertUnprocessable()
+        ->assertConflict()
         ->assertJsonPath('change.status', 'stale');
 
     expect($this->post->refresh()->excerpt)->toBe('Original excerpt.');
@@ -124,7 +214,7 @@ test('a body hunk whose region vanished is stale', function (): void {
 
     $this->actingAs($this->user)
         ->postJson(route('posts.assistant.changes.accept', [$this->post, $change]))
-        ->assertUnprocessable()
+        ->assertConflict()
         ->assertJsonPath('change.status', 'stale');
 });
 
@@ -149,7 +239,7 @@ test('accepting a body change records a revisionable save', function (): void {
         'old_blocks' => 'Old paragraph.',
         'new_blocks' => 'Improved paragraph.',
         'anchor_before' => '## Intro',
-        'anchor_after' => null,
+        'anchor_after' => 'Closing thoughts.',
     ]);
     $previousVersion = $this->post->lock_version;
 
@@ -158,7 +248,8 @@ test('accepting a body change records a revisionable save', function (): void {
         ->assertSuccessful();
 
     expect($this->post->refresh()->lock_version)->toBe($previousVersion + 1)
-        ->and($this->post->updated_by_id)->toBe($this->user->id);
+        ->and($this->post->updated_by_id)->toBe($this->user->id)
+        ->and($this->post->revisions()->sole()->event)->toBe(PostRevisionEvent::Saved);
 });
 
 test('rejecting a change leaves the post untouched', function (): void {
@@ -246,7 +337,22 @@ test('an ambiguous duplicated hunk without a usable anchor is stale', function (
 
     $this->actingAs($this->user)
         ->postJson(route('posts.assistant.changes.accept', [$this->post, $change]))
-        ->assertUnprocessable();
+        ->assertConflict();
+});
+
+test('a body hunk is stale when its trailing anchor moved', function (): void {
+    $change = makeChange($this->post, $this->turn, AssistantChangeType::Body, [
+        'old_blocks' => 'Old paragraph.',
+        'new_blocks' => 'Replacement.',
+        'anchor_before' => '## Intro',
+        'anchor_after' => 'A different closing.',
+    ]);
+
+    $this->actingAs($this->user)
+        ->postJson(route('posts.assistant.changes.accept', [$this->post, $change]))
+        ->assertConflict();
+
+    expect($this->post->refresh()->body?->plainText())->toContain('Old paragraph.');
 });
 
 test('an insertion into an empty body appends the new content', function (): void {
@@ -276,5 +382,5 @@ test('an empty insertion hunk is stale', function (): void {
 
     $this->actingAs($this->user)
         ->postJson(route('posts.assistant.changes.accept', [$this->post, $change]))
-        ->assertUnprocessable();
+        ->assertConflict();
 });

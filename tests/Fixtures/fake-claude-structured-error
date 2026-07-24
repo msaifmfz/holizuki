@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+cat > /dev/null
+echo '{"type":"system","subtype":"init","session_id":"fixture-session"}'
+echo '{"type":"assistant","error":"rate_limit","message":{"content":[]}}'
+echo '{"type":"result","subtype":"error_during_execution","is_error":true,"duration_ms":10,"errors":["You have hit your session limit"],"usage":{"input_tokens":10}}'
+exit 1

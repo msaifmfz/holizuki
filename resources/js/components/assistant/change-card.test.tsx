@@ -160,4 +160,70 @@ describe('ChangeCard', () => {
             screen.getByRole('button', { name: /find/i }),
         ).toBeInTheDocument();
     });
+
+    it('offers locate for an addition before a trailing anchor', () => {
+        const change: AssistantChangeData = {
+            id: 10,
+            type: 'body',
+            status: 'proposed',
+            payload: {
+                old_blocks: '',
+                new_blocks: 'Inserted at the beginning.',
+                anchor_before: null,
+                anchor_after: 'The following paragraph.',
+            },
+            turn_id: 4,
+        };
+
+        render(
+            <ChangeCard
+                change={change}
+                busy={false}
+                onAccept={vi.fn()}
+                onReject={vi.fn()}
+                onLocate={vi.fn()}
+            />,
+        );
+
+        expect(
+            screen.getByRole('button', { name: /find/i }),
+        ).toBeInTheDocument();
+    });
+
+    it('uses a bounded before/after preview for a large change', () => {
+        render(
+            <ChangeCard
+                change={bodyChange(
+                    'before '.repeat(1_000),
+                    'after '.repeat(1_000),
+                )}
+                busy={false}
+                onAccept={vi.fn()}
+                onReject={vi.fn()}
+            />,
+        );
+
+        expect(screen.getByText(/large change/i)).toBeInTheDocument();
+        expect(screen.getByText('Before')).toBeInTheDocument();
+        expect(screen.getByText('After')).toBeInTheDocument();
+    });
+
+    it('surfaces a decision error without removing the proposal', () => {
+        render(
+            <ChangeCard
+                change={bodyChange('Old.', 'New.')}
+                busy={false}
+                error="The post changed. Try again."
+                onAccept={vi.fn()}
+                onReject={vi.fn()}
+            />,
+        );
+
+        expect(screen.getByRole('alert')).toHaveTextContent(
+            'The post changed. Try again.',
+        );
+        expect(
+            screen.getByRole('button', { name: /accept/i }),
+        ).toBeInTheDocument();
+    });
 });

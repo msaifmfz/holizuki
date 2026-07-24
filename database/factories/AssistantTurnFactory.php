@@ -28,6 +28,8 @@ class AssistantTurnFactory extends Factory
     {
         return [
             'assistant_session_id' => AssistantSession::factory(),
+            'run_token' => fake()->uuid(),
+            'request_id' => fake()->uuid(),
             'task_type' => AssistantTaskType::Chat,
             'status' => AssistantTurnStatus::Completed,
             'user_prompt' => fake()->sentence(),
@@ -35,9 +37,16 @@ class AssistantTurnFactory extends Factory
             'context' => null,
             'snapshot_draft' => '',
             'snapshot_meta' => [],
+            'result_subtype' => 'success',
+            'stop_reason' => null,
+            'usage' => null,
             'cost_usd' => null,
             'duration_ms' => fake()->numberBetween(500, 60_000),
-            'error' => null,
+            'error_code' => null,
+            'error_message' => null,
+            'retry_at' => null,
+            'cancel_requested_at' => null,
+            'finished_at' => now(),
         ];
     }
 
@@ -47,6 +56,8 @@ class AssistantTurnFactory extends Factory
             'status' => AssistantTurnStatus::Running,
             'assistant_message' => null,
             'duration_ms' => null,
+            'result_subtype' => null,
+            'finished_at' => null,
         ]);
     }
 }

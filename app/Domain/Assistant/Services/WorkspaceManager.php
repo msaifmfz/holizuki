@@ -4,11 +4,16 @@ declare(strict_types=1);
 
 namespace App\Domain\Assistant\Services;
 
+use App\Domain\Assistant\Enums\AssistantTaskType;
+use App\Domain\Assistant\Models\AssistantTurn;
 use App\Domain\Publishing\Markdown\MarkdownSerializer;
 use App\Domain\Publishing\Models\Post;
 use App\Domain\Publishing\ValueObjects\RichTextDocument;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use JsonException;
+use UnexpectedValueException;
 
 /**
  * Materializes the on-disk workspace an agent turn operates on: the draft as
@@ -30,29 +35,76 @@ class WorkspaceManager
         private readonly MarkdownSerializer $serializer,
     ) {}
 
-    public function pathFor(Post $post): string
+    public function rootFor(Post $post): string
     {
         return config()->string('assistant.workspaces', storage_path('app/ai-workspaces')).'/'.$post->id;
     }
 
-    public function materialize(Post $post): void
+    public function pathFor(Post $post, AssistantTurn $turn): string
     {
-        $path = $this->pathFor($post);
+        return $this->pathForRun($post, $turn->run_token);
+    }
 
-        // Rebuild images/ from scratch so media removed from the post since the
-        // last turn leaves no orphan files or stale manifest behind. Agent-
-        // authored files elsewhere in the workspace (e.g. outline.md) survive.
-        $this->files->deleteDirectory($path.'/images');
+    public function pathForRun(Post $post, string $runToken): string
+    {
+        if (! Str::isUuid($runToken)) {
+            throw new UnexpectedValueException('Assistant run tokens must be UUIDs.');
+        }
+
+        return $this->rootFor($post).'/runs/'.$runToken;
+    }
+
+    public function materialize(Post $post, AssistantTurn $turn): void
+    {
+        $path = $this->pathForRun($post, $turn->run_token);
+        $root = $this->rootFor($post);
+        $runs = $root.'/runs';
+
+        $this->files->ensureDirectoryExists($runs);
+        $this->files->chmod($root, 0700);
+        $this->files->chmod($runs, 0700);
+
+        foreach ($this->files->directories($runs) as $runDirectory) {
+            if (! is_string($runDirectory)) {
+                continue;
+            }
+
+            if (basename($runDirectory) !== $turn->run_token) {
+                $this->files->deleteDirectory($runDirectory);
+            }
+        }
+
+        $this->files->deleteDirectory($path);
         $this->files->ensureDirectoryExists($path.'/images');
+        $this->files->chmod($path, 0700);
+        $this->files->chmod($path.'/images', 0700);
 
-        $this->files->put($path.'/draft.md', $this->draftMarkdown($post));
-        $this->files->put($path.'/meta.json', $this->encodeJson($this->metaFor($post)));
+        $draft = $this->draftMarkdown($post);
+        $this->assertSize('draft.md', $draft, $this->draftLimit());
+        $this->putPrivate($path.'/draft.md', $draft);
+        $this->putPrivate($path.'/meta.json', $this->encodeJson($this->metaFor($post)));
+
+        $session = $turn->session()->firstOrFail();
+
+        $startsNewOutline = $turn->task_type === AssistantTaskType::Outline
+            && (($turn->context ?? [])['step'] ?? null) === 'start';
+
+        if (! $startsNewOutline && $session->outline_ready && $session->outline_markdown !== null) {
+            $this->putPrivate($path.'/outline.md', $session->outline_markdown);
+        }
+
+        if (in_array($turn->task_type, [AssistantTaskType::Metadata, AssistantTaskType::Transform], true)) {
+            $this->writeImageManifest($path, []);
+
+            return;
+        }
+
         $this->materializeImages($post, $path);
     }
 
-    public function destroy(Post $post): void
+    public function destroy(Post $post): bool
     {
-        $this->files->deleteDirectory($this->pathFor($post));
+        return $this->files->deleteDirectory($this->rootFor($post));
     }
 
     public function draftMarkdown(Post $post): string
@@ -60,26 +112,45 @@ class WorkspaceManager
         return $post->body instanceof RichTextDocument ? $this->serializer->serialize($post->body) : '';
     }
 
-    public function readDraft(Post $post): string
+    public function destroyRun(Post $post, string $runToken): bool
     {
-        $file = $this->pathFor($post).'/draft.md';
+        return $this->files->deleteDirectory($this->pathForRun($post, $runToken));
+    }
 
-        return $this->files->exists($file) ? $this->files->get($file) : '';
+    public function readDraft(Post $post, AssistantTurn $turn): string
+    {
+        $draft = $this->readRegularFile(
+            $this->pathForRun($post, $turn->run_token).'/draft.md',
+            $this->draftLimit(),
+        );
+
+        if (! mb_check_encoding($draft, 'UTF-8')) {
+            throw new UnexpectedValueException('The assistant draft must be valid UTF-8.');
+        }
+
+        return $draft;
     }
 
     /** @return array<string, mixed> */
-    public function readMeta(Post $post): array
+    public function readMeta(Post $post, AssistantTurn $turn): array
     {
-        $file = $this->pathFor($post).'/meta.json';
+        $file = $this->pathForRun($post, $turn->run_token).'/meta.json';
+        $contents = $this->readRegularFile($file, $this->metaLimit());
 
-        if (! $this->files->exists($file)) {
-            return [];
+        try {
+            $decoded = json_decode($contents, true, 64, JSON_THROW_ON_ERROR);
+        } catch (JsonException $exception) {
+            throw new UnexpectedValueException('The assistant metadata must be valid JSON.', $exception->getCode(), previous: $exception);
         }
 
-        $decoded = json_decode($this->files->get($file), true);
-
         if (! is_array($decoded)) {
-            return [];
+            throw new UnexpectedValueException('The assistant metadata must be a JSON object.');
+        }
+
+        $unknownKeys = array_diff(array_keys($decoded), self::META_KEYS);
+
+        if ($unknownKeys !== []) {
+            throw new UnexpectedValueException('The assistant metadata contains unsupported fields.');
         }
 
         $meta = [];
@@ -92,19 +163,46 @@ class WorkspaceManager
             $value = $decoded[$key];
 
             if ($key === 'tags') {
-                $meta[$key] = is_array($value)
-                    ? array_values(array_filter($value, is_string(...)))
-                    : [];
+                if (! is_array($value) || ! array_is_list($value)) {
+                    throw new UnexpectedValueException('Assistant tags must be a JSON array.');
+                }
+
+                foreach ($value as $tag) {
+                    if (! is_string($tag)) {
+                        throw new UnexpectedValueException('Every assistant tag must be a string.');
+                    }
+                }
+
+                $meta[$key] = $value;
 
                 continue;
             }
 
-            if ($value === null || is_string($value)) {
-                $meta[$key] = $value;
+            if ($value !== null && ! is_string($value)) {
+                throw new UnexpectedValueException('Assistant metadata values must be strings or null.');
             }
+
+            $meta[$key] = $value;
         }
 
         return $meta;
+    }
+
+    public function readOutline(Post $post, AssistantTurn $turn): ?string
+    {
+        $file = $this->pathForRun($post, $turn->run_token).'/outline.md';
+
+        if (! $this->files->exists($file)) {
+            return null;
+        }
+
+        $outline = $this->readRegularFile($file, $this->outlineLimit());
+
+        if (! mb_check_encoding($outline, 'UTF-8') || preg_match('/^##\s+\S/mu', $outline) !== 1) {
+            throw new UnexpectedValueException('The assistant outline must contain at least one section heading.');
+        }
+
+        return rtrim($outline)."\n";
     }
 
     /** @return array<string, mixed> */
@@ -155,54 +253,124 @@ class WorkspaceManager
 
     private function materializeImages(Post $post, string $path): void
     {
-        $manifest = [];
+        /** @var list<array{source: string, destination: string, manifest: array<string, mixed>}> $images */
+        $images = [];
+        $totalBytes = 0;
         $usedMediaIds = $post->body instanceof RichTextDocument ? $post->body->referencedMediaIds() : [];
 
         foreach ($post->media as $media) {
             $extension = $this->extensionFor($media->path);
             $filename = 'media-'.$media->id.($extension === '' ? '' : '.'.$extension);
-            $this->linkImage($media->path, $path.'/images/'.$filename);
+            $source = $this->imageSource($media->path);
 
-            $manifest[] = [
-                'file' => 'images/'.$filename,
-                'role' => 'inline',
-                'mediaId' => $media->id,
-                'width' => $media->width,
-                'height' => $media->height,
-                'usedInDraft' => in_array($media->id, $usedMediaIds, true),
+            if ($source === null) {
+                continue;
+            }
+
+            $this->assertImageCount($images);
+            $totalBytes += $source['bytes'];
+            $this->assertImageBytes($totalBytes);
+
+            $images[] = [
+                'source' => $source['path'],
+                'destination' => $path.'/images/'.$filename,
+                'manifest' => [
+                    'file' => 'images/'.$filename,
+                    'role' => 'inline',
+                    'mediaId' => $media->id,
+                    'width' => $media->width,
+                    'height' => $media->height,
+                    'usedInDraft' => in_array($media->id, $usedMediaIds, true),
+                ],
             ];
         }
 
         if ($post->featured_image_path !== null) {
-            $extension = pathinfo($post->featured_image_path, PATHINFO_EXTENSION);
+            $extension = $this->extensionFor($post->featured_image_path);
             $filename = 'featured'.($extension === '' ? '' : '.'.$extension);
-            $this->linkImage($post->featured_image_path, $path.'/images/'.$filename);
+            $source = $this->imageSource($post->featured_image_path);
 
-            $manifest[] = [
-                'file' => 'images/'.$filename,
-                'role' => 'featured',
-                'mediaId' => null,
-                'width' => null,
-                'height' => null,
-                'usedInDraft' => false,
-            ];
+            if ($source !== null) {
+                $this->assertImageCount($images);
+                $totalBytes += $source['bytes'];
+                $this->assertImageBytes($totalBytes);
+
+                $images[] = [
+                    'source' => $source['path'],
+                    'destination' => $path.'/images/'.$filename,
+                    'manifest' => [
+                        'file' => 'images/'.$filename,
+                        'role' => 'featured',
+                        'mediaId' => null,
+                        'width' => null,
+                        'height' => null,
+                        'usedInDraft' => false,
+                    ],
+                ];
+            }
         }
 
-        $this->files->put($path.'/images/manifest.json', $this->encodeJson($manifest));
+        $manifest = [];
+
+        foreach ($images as $image) {
+            $this->copyImage($image['source'], $image['destination']);
+            $manifest[] = $image['manifest'];
+        }
+
+        $this->writeImageManifest($path, $manifest);
     }
 
     private function extensionFor(string $storagePath): string
     {
-        return pathinfo($storagePath, PATHINFO_EXTENSION);
+        $extension = Str::lower(pathinfo($storagePath, PATHINFO_EXTENSION));
+
+        return Str::isMatch('/\A[a-z0-9]{1,10}\z/', $extension) ? $extension : '';
     }
 
-    private function linkImage(string $storagePath, string $destination): void
+    /** @return array{path: string, bytes: int}|null */
+    private function imageSource(string $storagePath): ?array
     {
         $source = Storage::disk('public')->path($storagePath);
+        $root = realpath(Storage::disk('public')->path(''));
+        $realSource = realpath($source);
 
-        if ($this->files->exists($source) && ! $this->files->exists($destination) && ! @link($source, $destination)) {
-            $this->files->copy($source, $destination);
+        if ($realSource === false) {
+            return null;
         }
+
+        if (
+            $root === false
+            || ! str_starts_with($realSource, rtrim($root, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR)
+            || is_link($source)
+            || ! is_file($realSource)
+        ) {
+            throw new UnexpectedValueException('Assistant images must be regular files on the public disk.');
+        }
+
+        $bytes = filesize($realSource);
+
+        if (! is_int($bytes)) {
+            throw new UnexpectedValueException('The assistant image size could not be read.');
+        }
+
+        return ['path' => $realSource, 'bytes' => $bytes];
+    }
+
+    private function copyImage(string $source, string $destination): void
+    {
+        if (! $this->files->copy($source, $destination)) {
+            throw new UnexpectedValueException('The assistant image could not be copied.');
+        }
+
+        $this->files->chmod($destination, 0444);
+    }
+
+    /** @param list<array<string, mixed>> $manifest */
+    private function writeImageManifest(string $path, array $manifest): void
+    {
+        $manifestPath = $path.'/images/manifest.json';
+        $this->files->put($manifestPath, $this->encodeJson($manifest));
+        $this->files->chmod($manifestPath, 0444);
     }
 
     /**
@@ -234,6 +402,85 @@ class WorkspaceManager
     /** @param array<mixed> $value */
     private function encodeJson(array $value): string
     {
-        return json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)."\n";
+        try {
+            return json_encode(
+                $value,
+                JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR,
+            )."\n";
+        } catch (JsonException $exception) {
+            throw new UnexpectedValueException('The workspace metadata could not be encoded.', $exception->getCode(), previous: $exception);
+        }
+    }
+
+    private function putPrivate(string $path, string $contents): void
+    {
+        if ($this->files->put($path, $contents) === false) {
+            throw new UnexpectedValueException('An assistant workspace file could not be written.');
+        }
+
+        $this->files->chmod($path, 0600);
+    }
+
+    private function readRegularFile(string $path, int $maximumBytes): string
+    {
+        $workspaceRoot = realpath(config()->string('assistant.workspaces', storage_path('app/ai-workspaces')));
+        $realPath = realpath($path);
+        $parent = dirname($path);
+
+        if (
+            $workspaceRoot === false
+            || $realPath === false
+            || ! str_starts_with($realPath, rtrim($workspaceRoot, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR)
+            || is_link($parent)
+            || is_link($path)
+            || ! is_file($realPath)
+        ) {
+            throw new UnexpectedValueException('Assistant output must be a regular file.');
+        }
+
+        $bytes = filesize($realPath);
+
+        if (! is_int($bytes) || $bytes > $maximumBytes) {
+            throw new UnexpectedValueException('Assistant output exceeded its size limit.');
+        }
+
+        return $this->files->get($realPath);
+    }
+
+    private function assertSize(string $name, string $contents, int $maximumBytes): void
+    {
+        if (strlen($contents) > $maximumBytes) {
+            throw new UnexpectedValueException($name.' exceeded its workspace size limit.');
+        }
+    }
+
+    /** @param list<array<string, mixed>> $manifest */
+    private function assertImageCount(array $manifest): void
+    {
+        if (count($manifest) >= config()->integer('assistant.limits.image_count', 20)) {
+            throw new UnexpectedValueException('The assistant workspace has too many images.');
+        }
+    }
+
+    private function assertImageBytes(int $totalBytes): void
+    {
+        if ($totalBytes > config()->integer('assistant.limits.image_bytes', 100 * 1024 * 1024)) {
+            throw new UnexpectedValueException('The assistant workspace images exceeded their size limit.');
+        }
+    }
+
+    private function draftLimit(): int
+    {
+        return config()->integer('assistant.limits.draft_bytes', 2 * 1024 * 1024);
+    }
+
+    private function metaLimit(): int
+    {
+        return config()->integer('assistant.limits.meta_bytes', 64 * 1024);
+    }
+
+    private function outlineLimit(): int
+    {
+        return config()->integer('assistant.limits.outline_bytes', 64 * 1024);
     }
 }

@@ -85,6 +85,7 @@ export default function OrganizationCard({
                         <GenerateButton
                             label="Suggest"
                             busy={assistant.generating}
+                            disabled={!assistant.canGenerate}
                             onClick={() =>
                                 void assistant.generateMetadata(['tags'])
                             }
@@ -99,7 +100,12 @@ export default function OrganizationCard({
                     {assistant.suggestions.tags && (
                         <FieldSuggestionChip
                             change={assistant.suggestions.tags}
-                            busy={assistant.deciding}
+                            busy={assistant.isDeciding(
+                                assistant.suggestions.tags.id,
+                            )}
+                            error={assistant.decisionError(
+                                assistant.suggestions.tags.id,
+                            )}
                             onAccept={assistant.accept}
                             onReject={assistant.reject}
                         />

@@ -113,11 +113,30 @@ uploads:
 # AI writing assistant (Claude Code CLI).
 #
 # Authentication uses the site owner's Claude subscription, not an API key.
-# The CLAUDE_CODE_OAUTH_TOKEN must be provided via the runtime secret
-# (runtimeSecretName). Generate it once with `claude setup-token`.
+# Keep CLAUDE_CODE_OAUTH_TOKEN in the dedicated assistant secret so it is
+# exposed only to the web process and the deployment-time runtime check.
+# Generate it once with `claude setup-token`.
 assistant:
     enabled: true
+    oauthSecretName: holizuki-assistant
+    oauthSecretKey: CLAUDE_CODE_OAUTH_TOKEN
     turnTimeout: 300
+    startupTimeout: 30
+    idleTimeout: 150
+    rateLimit: 6
+    globalLockSeconds: 600
+    executionGraceSeconds: 120
+    models:
+        chat: claude-sonnet-4-6
+        transform: claude-sonnet-4-6
+        metadata: claude-haiku-4-5
+        outline: claude-sonnet-4-6
+        images: claude-sonnet-4-6
+    limits:
+        stdoutBytes: 16777216
+        stderrBytes: 65536
+        lineBytes: 4194304
+        narrationBytes: 131072
 
 service:
     port: 80

@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Domain\Assistant\Providers;
 
+use App\Domain\Assistant\Console\AssistantDoctorCommand;
 use App\Domain\Assistant\Console\PruneAssistantDataCommand;
 use App\Domain\Assistant\Services\AgentRunner;
+use App\Domain\Assistant\Services\BlockDiffer;
 use App\Domain\Assistant\Services\ClaudeCliRunner;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -19,6 +21,12 @@ class AssistantServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(AgentRunner::class, ClaudeCliRunner::class);
+        $this->app->bind(
+            BlockDiffer::class,
+            fn (): BlockDiffer => new BlockDiffer(
+                config()->integer('assistant.limits.diff_blocks', 500),
+            ),
+        );
     }
 
     public function boot(): void
@@ -28,7 +36,10 @@ class AssistantServiceProvider extends ServiceProvider
         )->by((string) ($request->user()->id ?? $request->ip())));
 
         if ($this->app->runningInConsole()) {
-            $this->commands([PruneAssistantDataCommand::class]);
+            $this->commands([
+                AssistantDoctorCommand::class,
+                PruneAssistantDataCommand::class,
+            ]);
         }
     }
 }

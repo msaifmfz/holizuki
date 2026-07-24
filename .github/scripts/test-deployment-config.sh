@@ -23,6 +23,8 @@ assert_digest_reference "$PHP_BASE_IMAGE_PRODUCTION"
 assert_digest_reference "$PHP_BASE_IMAGE_STAGING"
 assert_digest_reference "$NODE_BASE_IMAGE"
 assert_digest_reference "$COMPOSER_BASE_IMAGE"
+assert_digest_reference "$CLAUDE_CLI_BASE_IMAGE"
+[[ "$CLAUDE_INSTALLER_SHA256" =~ ^[a-f0-9]{64}$ ]]
 assert_digest_reference "$POSTGRES_IMAGE"
 [[ "$KUBECONFORM_CHECKSUM" =~ ^[a-f0-9]{64}$ ]]
 
@@ -32,6 +34,8 @@ production_php_version="${BASH_REMATCH[1]}"
 grep -Fq "ARG COMPOSER_BASE_IMAGE=\"$COMPOSER_BASE_IMAGE\"" "$repository_root/Dockerfile"
 grep -Fq "ARG NODE_BASE_IMAGE=\"$NODE_BASE_IMAGE\"" "$repository_root/Dockerfile"
 grep -Fq "ARG PHP_BASE_IMAGE=\"$PHP_BASE_IMAGE_PRODUCTION\"" "$repository_root/Dockerfile"
+grep -Fq "ARG CLAUDE_CLI_BASE_IMAGE=\"$CLAUDE_CLI_BASE_IMAGE\"" "$repository_root/Dockerfile"
+grep -Fq "ARG CLAUDE_INSTALLER_SHA256=\"$CLAUDE_INSTALLER_SHA256\"" "$repository_root/Dockerfile"
 
 configured_php_version="$(sed -n 's/^[[:space:]]*phpVersion:[[:space:]]*//p' "$repository_root/deploy/helm/holizuki/values.yaml")"
 

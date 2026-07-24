@@ -10,7 +10,7 @@ import {
     Star,
     StarOff,
 } from 'lucide-react';
-import { useEffect, useEffectEvent, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import PostAutosaveController from '@/actions/App/Http/Admin/Controllers/PostAutosaveController';
 import {
     edit,
@@ -49,6 +49,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAssistant } from '@/hooks/use-assistant';
 import {
+    editorFormsEqual,
+    postConflictFromHttpResponse,
+    reconcileAcceptedChange,
+    reconcileAutosave,
+} from '@/lib/editor-save';
+import {
     errorText,
     formatDate,
     localDateTimeToUtc,
@@ -61,7 +67,6 @@ import {
 } from '@/routes/posts/feature';
 import type {
     AcceptChangeResponse,
-    AssistantChangeData,
     AutosaveResponse,
     EditorOption,
     PostConflict,
@@ -109,7 +114,7 @@ export default function EditPost({
     const [scheduleAt, setScheduleAt] = useState(
         toLocalDateTimeInput(post.scheduled_at),
     );
-    const autosave = useHttp<EditorForm, AutosaveResponse>({
+    const [initialEditorData] = useState<EditorForm>(() => ({
         title: post.title,
         slug: post.slug,
         slug_is_manual: post.slug_is_manual,
@@ -128,7 +133,17 @@ export default function EditPost({
         noindex: post.noindex,
         lock_version: post.lock_version,
         force: false,
-    });
+    }));
+    const autosave = useHttp<EditorForm, AutosaveResponse>(initialEditorData);
+    const latestAutosaveDataRef = useRef(initialEditorData);
+    const savedBaselineRef = useRef(initialEditorData);
+    const savePromiseRef = useRef<Promise<AutosaveResponse | null> | null>(
+        null,
+    );
+
+    useEffect(() => {
+        latestAutosaveDataRef.current = autosave.data;
+    }, [autosave.data]);
     const publishing = useHttp<
         { lock_version: number; scheduled_at: string },
         PublishingResponse
@@ -138,15 +153,19 @@ export default function EditPost({
     });
     const featuring = useHttp<Record<string, never>, void>({});
 
-    const applySaveResponse = (response: AutosaveResponse) => {
-        const nextData = {
-            ...autosave.data,
-            slug: response.slug,
-            lock_version: response.lock_version,
-            force: false,
-        };
-        autosave.setData(nextData);
-        autosave.setDefaults(nextData);
+    const applySaveResponse = (
+        response: AutosaveResponse,
+        submittedData: EditorForm,
+    ) => {
+        const reconciled = reconcileAutosave(
+            latestAutosaveDataRef.current,
+            submittedData,
+            response,
+        );
+        latestAutosaveDataRef.current = reconciled.data;
+        savedBaselineRef.current = reconciled.defaults;
+        autosave.setDefaults(reconciled.defaults);
+        autosave.setData(reconciled.data);
         setPostState((current) => ({
             ...current,
             slug: response.slug,
@@ -154,88 +173,88 @@ export default function EditPost({
             updated_at: response.updated_at,
             last_editor: response.last_editor,
         }));
-        setSaveState('saved');
+        setSaveState(reconciled.hasPendingChanges ? 'saving' : 'saved');
         setConflict(null);
     };
 
-    const save = async (
+    const save = (
         manual = false,
         force = false,
     ): Promise<AutosaveResponse | null> => {
-        setSaveState('saving');
-        autosave.transform((data) => ({ ...data, force }));
+        const activeSave = savePromiseRef.current;
 
-        try {
-            const response = await autosave.patch(
-                manual
-                    ? update.url(post.id)
-                    : PostAutosaveController.url(post.id),
-                {
-                    onHttpException: (httpResponse) => {
-                        if (httpResponse.status === 409) {
-                            const payload = httpResponse.data as unknown as {
-                                conflict: PostConflict;
-                            };
-                            setConflict(payload.conflict);
-                        }
-                    },
-                },
-            );
-            applySaveResponse(response);
-
-            return response;
-        } catch {
-            setSaveState('error');
-
-            return null;
+        if (activeSave !== null) {
+            return manual
+                ? activeSave.then((response) =>
+                      response === null ? null : save(true, force),
+                  )
+                : activeSave;
         }
+
+        const submittedData: EditorForm = {
+            ...latestAutosaveDataRef.current,
+            force,
+        };
+        const request = (async (): Promise<AutosaveResponse | null> => {
+            setSaveState('saving');
+            autosave.transform(() => submittedData);
+            let successfulResponse: AutosaveResponse | null = null;
+
+            try {
+                await autosave.patch(
+                    manual
+                        ? update.url(post.id)
+                        : PostAutosaveController.url(post.id),
+                    {
+                        onSuccess: (response) => {
+                            successfulResponse = response;
+                            applySaveResponse(response, submittedData);
+                        },
+                        onHttpException: (httpResponse) => {
+                            if (httpResponse.status === 409) {
+                                setConflict(
+                                    postConflictFromHttpResponse(
+                                        httpResponse.data,
+                                        submittedData.lock_version,
+                                    ),
+                                );
+                            }
+                        },
+                    },
+                );
+
+                if (successfulResponse === null) {
+                    setSaveState('error');
+                }
+
+                return successfulResponse;
+            } catch {
+                setSaveState('error');
+
+                return null;
+            }
+        })();
+        savePromiseRef.current = request;
+        void request.finally(() => {
+            if (savePromiseRef.current === request) {
+                savePromiseRef.current = null;
+            }
+        });
+
+        return request;
     };
 
-    const applyAcceptedChange = (
-        change: AssistantChangeData,
-        saved: AcceptChangeResponse['post'],
-    ) => {
-        const updates: Partial<EditorForm> = {
-            slug: saved.slug,
-            lock_version: saved.lock_version,
-        };
-
-        switch (change.type) {
-            case 'title':
-                updates.title = saved.title ?? '';
-                break;
-            case 'excerpt':
-                updates.excerpt = saved.excerpt ?? '';
-                break;
-            case 'seo_title':
-                updates.seo_title = saved.seo_title ?? '';
-                break;
-            case 'meta_description':
-                updates.meta_description = saved.meta_description ?? '';
-                break;
-            case 'og_title':
-                updates.og_title = saved.og_title ?? '';
-                break;
-            case 'og_description':
-                updates.og_description = saved.og_description ?? '';
-                break;
-            case 'featured_image_alt':
-                updates.featured_image_alt = saved.featured_image_alt ?? '';
-                break;
-            case 'featured_image_caption':
-                updates.featured_image_caption =
-                    saved.featured_image_caption ?? '';
-                break;
-            case 'tags':
-                updates.tags = saved.tags;
-                break;
-            case 'body':
-                updates.body = saved.body;
-                break;
-        }
-
-        autosave.setData((data) => ({ ...data, ...updates }));
-        autosave.setDefaults(updates);
+    const applyAcceptedChange = (saved: AcceptChangeResponse['post']) => {
+        const reconciled = reconcileAcceptedChange(
+            latestAutosaveDataRef.current,
+            savedBaselineRef.current,
+            saved,
+        );
+        latestAutosaveDataRef.current = reconciled.data;
+        savedBaselineRef.current = reconciled.defaults;
+        autosave.setDefaults(reconciled.defaults);
+        autosave.setData(reconciled.data);
+        setSaveState(reconciled.hasPendingChanges ? 'saving' : 'saved');
         setPostState((current) => ({
             ...current,
             slug: saved.slug,
@@ -245,22 +264,48 @@ export default function EditPost({
         }));
     };
 
-    const assistant = useAssistant({
-        postId: post.id,
-        ensureSaved: async () => {
-            if (conflict) {
-                return false;
+    const ensureLatestSaved = async (): Promise<boolean> => {
+        if (conflict) {
+            return false;
+        }
+
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+            if (
+                editorFormsEqual(
+                    latestAutosaveDataRef.current,
+                    savedBaselineRef.current,
+                )
+            ) {
+                return true;
             }
 
-            return autosave.isDirty ? (await save()) !== null : true;
-        },
+            if ((await save()) === null) {
+                return false;
+            }
+        }
+
+        return editorFormsEqual(
+            latestAutosaveDataRef.current,
+            savedBaselineRef.current,
+        );
+    };
+
+    const assistant = useAssistant({
+        postId: post.id,
+        ensureSaved: ensureLatestSaved,
         onAccepted: applyAcceptedChange,
     });
 
     const autosaveAfterDelay = useEffectEvent(() => void save());
 
     useEffect(() => {
-        if (!autosave.isDirty || autosave.processing || conflict) {
+        if (
+            !autosave.isDirty ||
+            autosave.processing ||
+            savePromiseRef.current !== null ||
+            assistant.deciding ||
+            conflict
+        ) {
             return;
         }
 
@@ -270,7 +315,13 @@ export default function EditPost({
         }, 2000);
 
         return () => window.clearTimeout(timeout);
-    }, [autosave.data, autosave.isDirty, autosave.processing, conflict]);
+    }, [
+        assistant.deciding,
+        autosave.data,
+        autosave.isDirty,
+        autosave.processing,
+        conflict,
+    ]);
 
     const changeTitle = (title: string) => {
         autosave.setData((data) => ({
@@ -283,11 +334,25 @@ export default function EditPost({
         }));
     };
 
+    const applyServerEditorUpdate = (updates: Partial<EditorForm>): void => {
+        latestAutosaveDataRef.current = {
+            ...latestAutosaveDataRef.current,
+            ...updates,
+        };
+        savedBaselineRef.current = {
+            ...savedBaselineRef.current,
+            ...updates,
+        };
+        autosave.setData((data) => ({ ...data, ...updates }));
+        autosave.setDefaults(updates);
+    };
+
     const applyPublishingResponse = (response: PublishingResponse) => {
         // Update only lock_version against the live form state so any edits made
         // while the request was in flight are preserved rather than clobbered.
-        autosave.setData('lock_version', response.lock_version);
-        autosave.setDefaults('lock_version', response.lock_version);
+        applyServerEditorUpdate({
+            lock_version: response.lock_version,
+        });
         publishing.setDefaults({
             lock_version: response.lock_version,
             scheduled_at: '',
@@ -300,13 +365,11 @@ export default function EditPost({
     };
 
     const publishNow = async () => {
-        const saved = autosave.isDirty ? await save() : null;
-
-        if (autosave.isDirty && !saved) {
+        if (!(await ensureLatestSaved())) {
             return;
         }
 
-        const lockVersion = saved?.lock_version ?? autosave.data.lock_version;
+        const lockVersion = latestAutosaveDataRef.current.lock_version;
         publishing.transform(() => ({
             lock_version: lockVersion,
             scheduled_at: '',
@@ -326,13 +389,11 @@ export default function EditPost({
             return;
         }
 
-        const saved = autosave.isDirty ? await save() : null;
-
-        if (autosave.isDirty && !saved) {
+        if (!(await ensureLatestSaved())) {
             return;
         }
 
-        const lockVersion = saved?.lock_version ?? autosave.data.lock_version;
+        const lockVersion = latestAutosaveDataRef.current.lock_version;
         publishing.transform(() => ({
             lock_version: lockVersion,
             scheduled_at: localDateTimeToUtc(scheduleAt),
@@ -380,7 +441,7 @@ export default function EditPost({
 
     const openPreview = async () => {
         const previewWindow = window.open('about:blank', '_blank');
-        const saved = autosave.isDirty ? await save() : true;
+        const saved = await ensureLatestSaved();
 
         if (!saved) {
             previewWindow?.close();
@@ -428,9 +489,9 @@ export default function EditPost({
                             >
                                 <Sparkles />
                                 Co-writer
-                                {assistant.bodyChanges.length > 0 && (
+                                {assistant.pendingCount > 0 && (
                                     <span className="ml-1 rounded-full bg-primary-foreground/20 px-1.5 text-xs">
-                                        {assistant.bodyChanges.length}
+                                        {assistant.pendingCount}
                                     </span>
                                 )}
                             </Button>
@@ -501,6 +562,19 @@ export default function EditPost({
                                 <InputError
                                     message={errorText(autosave.errors.title)}
                                 />
+                                {assistant.suggestions.title && (
+                                    <FieldSuggestionChip
+                                        change={assistant.suggestions.title}
+                                        busy={assistant.isDeciding(
+                                            assistant.suggestions.title.id,
+                                        )}
+                                        error={assistant.decisionError(
+                                            assistant.suggestions.title.id,
+                                        )}
+                                        onAccept={assistant.accept}
+                                        onReject={assistant.reject}
+                                    />
+                                )}
                             </div>
                             <div className="grid gap-2">
                                 <div className="flex items-center justify-between gap-2">
@@ -547,6 +621,7 @@ export default function EditPost({
                                     <Label htmlFor="excerpt">Excerpt</Label>
                                     <GenerateButton
                                         busy={assistant.generating}
+                                        disabled={!assistant.canGenerate}
                                         onClick={() =>
                                             void assistant.generateMetadata([
                                                 'excerpt',
@@ -581,7 +656,12 @@ export default function EditPost({
                                 {assistant.suggestions.excerpt && (
                                     <FieldSuggestionChip
                                         change={assistant.suggestions.excerpt}
-                                        busy={assistant.deciding}
+                                        busy={assistant.isDeciding(
+                                            assistant.suggestions.excerpt.id,
+                                        )}
+                                        error={assistant.decisionError(
+                                            assistant.suggestions.excerpt.id,
+                                        )}
                                         onAccept={assistant.accept}
                                         onReject={assistant.reject}
                                     />
@@ -593,9 +673,11 @@ export default function EditPost({
                     {!documentHasText(autosave.data.body) && (
                         <OutlineWizard
                             busy={assistant.generating}
-                            onStart={(topic) => {
+                            disabled={!assistant.canGenerate}
+                            onStart={async (topic) => {
                                 setAssistantOpen(true);
-                                void assistant.startOutline(topic);
+
+                                return assistant.startOutline(topic);
                             }}
                         />
                     )}
@@ -613,7 +695,10 @@ export default function EditPost({
                                 value={autosave.data.body}
                                 postId={post.id}
                                 locateTarget={locateTarget}
-                                aiBusy={assistant.generating}
+                                aiBusy={
+                                    assistant.generating ||
+                                    !assistant.canGenerate
+                                }
                                 onAiTransform={(
                                     selection,
                                     preset,
@@ -653,14 +738,9 @@ export default function EditPost({
                         postId={post.id}
                         ogImageUrl={postState.og_image_url}
                         onOgImageChange={(response) => {
-                            autosave.setData(
-                                'lock_version',
-                                response.lock_version,
-                            );
-                            autosave.setDefaults(
-                                'lock_version',
-                                response.lock_version,
-                            );
+                            applyServerEditorUpdate({
+                                lock_version: response.lock_version,
+                            });
                             setPostState((current) => ({
                                 ...current,
                                 og_image_url: response.og_image_url,
@@ -788,6 +868,7 @@ export default function EditPost({
                                 <GenerateButton
                                     label="Review images"
                                     busy={assistant.generating}
+                                    disabled={!assistant.canGenerate}
                                     onClick={() => {
                                         setAssistantOpen(true);
                                         void assistant.reviewImages();
@@ -817,34 +898,17 @@ export default function EditPost({
                                 onChange={(response) => {
                                     const alternativeText =
                                         response.featured_image_alt ?? '';
-                                    autosave.setData(
-                                        'lock_version',
-                                        response.lock_version,
-                                    );
-                                    autosave.setDefaults(
-                                        'lock_version',
-                                        response.lock_version,
-                                    );
-                                    autosave.setData(
-                                        'featured_image_alt',
-                                        alternativeText,
-                                    );
-                                    autosave.setDefaults(
-                                        'featured_image_alt',
-                                        alternativeText,
-                                    );
+                                    const editorUpdates: Partial<EditorForm> = {
+                                        lock_version: response.lock_version,
+                                        featured_image_alt: alternativeText,
+                                    };
 
                                     if (response.featured_image_url === null) {
-                                        autosave.setData(
-                                            'featured_image_caption',
-                                            '',
-                                        );
-                                        autosave.setDefaults(
-                                            'featured_image_caption',
-                                            '',
-                                        );
+                                        editorUpdates.featured_image_caption =
+                                            '';
                                     }
 
+                                    applyServerEditorUpdate(editorUpdates);
                                     setPostState((current) => ({
                                         ...current,
                                         featured_image_url:
@@ -860,6 +924,52 @@ export default function EditPost({
                                     }));
                                 }}
                             />
+                            {assistant.suggestions.featured_image_alt && (
+                                <div className="grid gap-1">
+                                    <p className="text-xs font-medium text-muted-foreground">
+                                        Suggested image alt text
+                                    </p>
+                                    <FieldSuggestionChip
+                                        change={
+                                            assistant.suggestions
+                                                .featured_image_alt
+                                        }
+                                        busy={assistant.isDeciding(
+                                            assistant.suggestions
+                                                .featured_image_alt.id,
+                                        )}
+                                        error={assistant.decisionError(
+                                            assistant.suggestions
+                                                .featured_image_alt.id,
+                                        )}
+                                        onAccept={assistant.accept}
+                                        onReject={assistant.reject}
+                                    />
+                                </div>
+                            )}
+                            {assistant.suggestions.featured_image_caption && (
+                                <div className="grid gap-1">
+                                    <p className="text-xs font-medium text-muted-foreground">
+                                        Suggested image caption
+                                    </p>
+                                    <FieldSuggestionChip
+                                        change={
+                                            assistant.suggestions
+                                                .featured_image_caption
+                                        }
+                                        busy={assistant.isDeciding(
+                                            assistant.suggestions
+                                                .featured_image_caption.id,
+                                        )}
+                                        error={assistant.decisionError(
+                                            assistant.suggestions
+                                                .featured_image_caption.id,
+                                        )}
+                                        onAccept={assistant.accept}
+                                        onReject={assistant.reject}
+                                    />
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
 
@@ -877,24 +987,36 @@ export default function EditPost({
                 onClose={() => setAssistantOpen(false)}
                 thread={assistant.thread}
                 bodyChanges={assistant.bodyChanges}
+                pendingCount={assistant.pendingCount}
                 streaming={assistant.generating}
                 narration={assistant.narration}
-                deciding={assistant.deciding}
+                hydrated={assistant.hydrated}
+                status={assistant.status}
+                retryAt={assistant.retryAt}
+                stateError={assistant.stateError}
+                canGenerate={assistant.canGenerate}
+                cancelling={assistant.cancelling}
                 outlineReady={assistant.outlineReady}
-                onDraftOutline={() => void assistant.draftOutline()}
-                onSend={(message) => void assistant.sendChat(message)}
-                onCancel={assistant.cancel}
+                onDraftOutline={assistant.draftOutline}
+                onSend={assistant.sendChat}
+                onCancel={() => void assistant.cancel()}
                 onAccept={(change) => void assistant.accept(change)}
                 onReject={(change) => void assistant.reject(change)}
+                onRetry={() => void assistant.refresh()}
+                isDeciding={assistant.isDeciding}
+                decisionError={assistant.decisionError}
                 onLocate={(change) => {
                     const payload = change.payload as {
                         old_blocks?: string;
                         anchor_before?: string | null;
+                        anchor_after?: string | null;
                     };
                     const markdown =
                         payload.old_blocks && payload.old_blocks !== ''
                             ? payload.old_blocks
-                            : (payload.anchor_before ?? '');
+                            : (payload.anchor_before ??
+                              payload.anchor_after ??
+                              '');
 
                     if (markdown !== '') {
                         setLocateTarget({ markdown, token: Date.now() });

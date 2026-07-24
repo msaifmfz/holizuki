@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Assistant\Enums\AgentFailureCode;
 use App\Domain\Assistant\Enums\AssistantChangeStatus;
 use App\Domain\Assistant\Enums\AssistantChangeType;
 use App\Domain\Assistant\Enums\AssistantSessionStatus;
@@ -50,12 +51,13 @@ test('guests cannot generate metadata', function (): void {
         ->assertRedirect(route('login'));
 });
 
-test('the endpoint is hidden when the assistant is disabled', function (): void {
+test('the endpoint reports when the assistant is disabled', function (): void {
     config()->set('assistant.enabled', false);
 
     $this->actingAs($this->user)
-        ->post(route('posts.assistant.metadata', $this->post), ['fields' => ['excerpt']])
-        ->assertNotFound();
+        ->postJson(route('posts.assistant.metadata', $this->post), ['fields' => ['excerpt']])
+        ->assertServiceUnavailable()
+        ->assertJsonPath('code', 'assistant_disabled');
 });
 
 test('fields must come from the generatable whitelist', function (): void {
@@ -67,6 +69,12 @@ test('fields must come from the generatable whitelist', function (): void {
 
     $this->actingAs($this->user)
         ->postJson(route('posts.assistant.metadata', $this->post), ['fields' => []])
+        ->assertUnprocessable();
+
+    $this->actingAs($this->user)
+        ->postJson(route('posts.assistant.metadata', $this->post), [
+            'fields' => ['excerpt', 'excerpt'],
+        ])
         ->assertUnprocessable();
 });
 
@@ -125,7 +133,14 @@ test('a metadata turn streams narration and records field proposals', function (
 test('an agent error fails the turn and streams a friendly message', function (): void {
     fakeRunner([
         AgentEvent::text('Working on it.'),
-        AgentEvent::result(isError: true, text: 'usage limit reached, resets at 5pm', costUsd: null, durationMs: null),
+        AgentEvent::result(
+            isError: true,
+            text: AgentFailureCode::RateLimit->message(),
+            costUsd: null,
+            durationMs: null,
+            code: AgentFailureCode::RateLimit->value,
+            retryAt: now()->addMinutes(15)->toISOString(),
+        ),
     ]);
 
     $stream = $this->actingAs($this->user)
@@ -134,7 +149,7 @@ test('an agent error fails the turn and streams a friendly message', function ()
         ->streamedContent();
 
     expect($stream)->toContain('event: error')
-        ->toContain('cooling down');
+        ->toContain('after the cooldown');
 
     expect(AssistantTurn::query()->firstOrFail()->status)->toBe(AssistantTurnStatus::Failed);
 });
@@ -146,7 +161,8 @@ test('a second turn is rejected while one is running', function (): void {
 
     $this->actingAs($this->user)
         ->postJson(route('posts.assistant.metadata', $this->post), ['fields' => ['excerpt']])
-        ->assertConflict();
+        ->assertTooManyRequests()
+        ->assertJsonPath('code', 'post_busy');
 });
 
 test('a guard failure for the SSE client renders a readable JSON error, not HTML', function (): void {
@@ -162,9 +178,12 @@ test('a guard failure for the SSE client renders a readable JSON error, not HTML
             'X-Requested-With' => 'XMLHttpRequest',
         ])
         ->post(route('posts.assistant.metadata', $this->post), ['fields' => ['excerpt']])
-        ->assertConflict()
+        ->assertTooManyRequests()
         ->assertHeader('Content-Type', 'application/json')
-        ->assertJson(['message' => 'The assistant is already working on this post.']);
+        ->assertJson([
+            'code' => 'post_busy',
+            'message' => 'The assistant is already working on this post.',
+        ]);
 });
 
 test('an abandoned running session is reclaimed after the timeout', function (): void {
@@ -174,9 +193,10 @@ test('an abandoned running session is reclaimed after the timeout', function ():
 
     $session = AssistantSession::factory()->for($this->post, 'post')->create([
         'status' => AssistantSessionStatus::Running,
-        'turn_started_at' => now()->subSeconds((int) config('assistant.turn_timeout') + 60),
+        'turn_started_at' => now()->subSeconds((int) config('assistant.global_lock_seconds') + 60),
     ]);
-    AssistantTurn::factory()->running()->for($session, 'session')->create();
+    $abandonedTurn = AssistantTurn::factory()->running()->for($session, 'session')->create();
+    $session->forceFill(['active_run_token' => $abandonedTurn->run_token])->save();
 
     $this->actingAs($this->user)
         ->post(route('posts.assistant.metadata', $this->post), ['fields' => ['excerpt']])
@@ -228,7 +248,10 @@ test('a crashing runner fails the turn gracefully', function (): void {
 
 test('authentication failures surface as a sign-in hint', function (): void {
     fakeRunner([
-        AgentEvent::error('claude: fatal, not logged in'),
+        AgentEvent::error(
+            AgentFailureCode::AuthenticationFailed->message(),
+            AgentFailureCode::AuthenticationFailed->value,
+        ),
     ]);
 
     $stream = $this->actingAs($this->user)

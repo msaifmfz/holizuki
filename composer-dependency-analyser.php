@@ -12,7 +12,9 @@ return $configuration
     ->ignoreErrorsOnPackage('laravel/tinker', [ErrorType::UNUSED_DEPENDENCY])
     ->ignoreErrorsOnPackage('laravel/telescope', [ErrorType::DEV_DEPENDENCY_IN_PROD])
     ->ignoreErrorsOnPackage('laravel/wayfinder', [ErrorType::UNUSED_DEPENDENCY])
+    ->ignoreErrorsOnExtension('ext-mbstring', [ErrorType::SHADOW_DEPENDENCY])
     ->ignoreErrorsOnPackage('google/protobuf', [ErrorType::SHADOW_DEPENDENCY])
     ->ignoreErrorsOnPackage('nesbot/carbon', [ErrorType::SHADOW_DEPENDENCY])
     ->ignoreErrorsOnPackage('pestphp/pest-plugin-arch', [ErrorType::SHADOW_DEPENDENCY])
-    ->ignoreErrorsOnPackage('symfony/http-foundation', [ErrorType::SHADOW_DEPENDENCY]);
+    ->ignoreErrorsOnPackage('symfony/http-foundation', [ErrorType::SHADOW_DEPENDENCY])
+    ->ignoreErrorsOnPackage('symfony/process', [ErrorType::SHADOW_DEPENDENCY]);

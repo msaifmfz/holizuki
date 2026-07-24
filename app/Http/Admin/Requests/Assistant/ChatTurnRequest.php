@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace App\Http\Admin\Requests\Assistant;
 
+use App\Http\Admin\Requests\Assistant\Concerns\ResolvesAssistantRequestId;
 use App\Http\AuthenticatedRequest;
 
 class ChatTurnRequest extends AuthenticatedRequest
 {
+    use ResolvesAssistantRequestId;
+
     public function authorize(): bool
     {
         return $this->authenticatedUser()->can('update', $this->boundPost());
@@ -18,6 +21,7 @@ class ChatTurnRequest extends AuthenticatedRequest
     {
         return [
             'message' => ['required', 'string', 'max:10000'],
+            ...$this->assistantRequestIdRules(),
         ];
     }
 

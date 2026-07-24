@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+cat > /dev/null
+echo '{"type":"system","subtype":"init","session_id":"fixture-session"}'
+echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Incomplete."}]}}'

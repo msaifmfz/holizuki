@@ -15,6 +15,16 @@ export type AssistantChangeType =
 type AssistantChangeStatus =
     'proposed' | 'accepted' | 'rejected' | 'superseded' | 'stale';
 
+export type AssistantStatus =
+    'disabled' | 'unavailable' | 'idle' | 'running' | 'cancelling' | 'cooldown';
+
+export type AssistantErrorData = {
+    code: string;
+    message: string;
+    retry_at?: string | null;
+    turn_id?: number | null;
+};
+
 export type AssistantFieldPayload = {
     old: string | string[] | null;
     new: string | string[] | null;
@@ -43,11 +53,30 @@ type AssistantTurnData = {
 };
 
 export type AssistantStreamFrame =
-    | { event: 'narration'; data: { text: string } }
-    | { event: 'activity'; data: { tool: string; target: string | null } }
-    | { event: 'change'; data: { change: AssistantChangeData } }
-    | { event: 'done'; data: { turn: AssistantTurnData } }
-    | { event: 'error'; data: { message: string } };
+    | { event: 'started'; data: { turn_id: number } }
+    | { event: 'heartbeat'; data: { turn_id: number } }
+    | { event: 'narration'; data: { turn_id: number; text: string } }
+    | {
+          event: 'activity';
+          data: { turn_id: number; tool: string; target: string | null };
+      }
+    | {
+          event: 'change';
+          data: { turn_id: number; change: AssistantChangeData };
+      }
+    | {
+          event: 'done';
+          data: { turn_id: number; turn: AssistantTurnData };
+      }
+    | {
+          event: 'error';
+          data: {
+              turn_id: number;
+              code: string;
+              message: string;
+              retry_at?: string | null;
+          };
+      };
 
 export type AssistantTurnSummary = {
     id: number;
@@ -61,7 +90,16 @@ export type AssistantTurnSummary = {
 };
 
 export type AssistantStateResponse = {
-    session: { status: 'idle' | 'running' };
+    enabled: boolean;
+    available: boolean;
+    status: AssistantStatus;
+    retry_at: string | null;
+    active_turn: {
+        id: number;
+        task_type: string;
+        started_at: string | null;
+    } | null;
+    outline_ready: boolean;
     changes: AssistantChangeData[];
     turns: AssistantTurnSummary[];
 };
@@ -82,11 +120,16 @@ export type AcceptChangeResponse = {
         updated_at: string;
         last_editor: string | null;
         title: string | null;
+        slug_is_manual: boolean;
         excerpt: string | null;
+        category_id: number | null;
+        author_id: number | null;
         seo_title: string | null;
         meta_description: string | null;
+        canonical_url: string | null;
         og_title: string | null;
         og_description: string | null;
+        noindex: boolean;
         featured_image_alt: string | null;
         featured_image_caption: string | null;
         tags: string[];

@@ -36,7 +36,7 @@ spec:
       automountServiceAccountToken: false
       {{- include "holizuki.imagePullSecrets" . | nindent 6 }}
       serviceAccountName: {{ include "holizuki.serviceAccountName" . }}
-      terminationGracePeriodSeconds: 120
+      terminationGracePeriodSeconds: 360
       securityContext:
         {{- include "holizuki.podSecurityContext" . | nindent 8 }}
       initContainers:
@@ -51,6 +51,22 @@ spec:
           resources:
             {{- toYaml .Values.optimization.resources | nindent 12 }}
           {{- include "holizuki.volumeMounts" . | nindent 10 }}
+        {{- if .Values.assistant.enabled }}
+        - name: assistant-doctor
+          image: {{ include "holizuki.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - php
+            - artisan
+            - assistant:doctor
+            - --no-interaction
+          securityContext:
+            {{- include "holizuki.containerSecurityContext" . | nindent 12 }}
+          {{- include "holizuki.webEnv" . | nindent 10 }}
+          resources:
+            {{- toYaml .Values.optimization.resources | nindent 12 }}
+          {{- include "holizuki.volumeMounts" . | nindent 10 }}
+        {{- end }}
       containers:
         - name: web
           image: {{ include "holizuki.image" . }}
@@ -59,7 +75,7 @@ spec:
             - web
           securityContext:
             {{- include "holizuki.containerSecurityContext" . | nindent 12 }}
-          {{- include "holizuki.env" . | nindent 10 }}
+          {{- include "holizuki.webEnv" . | nindent 10 }}
           ports:
             - name: http
               containerPort: 8080

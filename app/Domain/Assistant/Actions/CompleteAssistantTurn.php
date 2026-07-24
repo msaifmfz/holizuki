@@ -7,8 +7,10 @@ namespace App\Domain\Assistant\Actions;
 use App\Domain\Assistant\Enums\AssistantChangeStatus;
 use App\Domain\Assistant\Enums\AssistantChangeType;
 use App\Domain\Assistant\Enums\AssistantSessionStatus;
+use App\Domain\Assistant\Enums\AssistantTaskType;
 use App\Domain\Assistant\Enums\AssistantTurnStatus;
 use App\Domain\Assistant\Models\AssistantChange;
+use App\Domain\Assistant\Models\AssistantSession;
 use App\Domain\Assistant\Models\AssistantTurn;
 use App\Domain\Assistant\Services\BlockDiffer;
 use App\Domain\Assistant\Services\WorkspaceManager;
@@ -17,6 +19,8 @@ use App\Domain\Publishing\Models\Post;
 use App\Domain\Publishing\Rules\ValidRichTextDocument;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Throwable;
+use UnexpectedValueException;
 
 /**
  * Closes a successful agent turn: diffs the workspace against the pre-turn
@@ -33,30 +37,91 @@ class CompleteAssistantTurn
         private readonly FailAssistantTurn $failTurn,
     ) {}
 
-    /** @return list<AssistantChange> */
-    public function handle(AssistantTurn $turn, Post $post, ?string $assistantMessage, ?float $costUsd, ?int $durationMs): array
-    {
-        $newDraft = $this->workspace->readDraft($post);
-        $snapshotDraft = $turn->snapshot_draft ?? '';
+    /**
+     * @param  array<string, mixed>|null  $usage
+     * @return list<AssistantChange>
+     */
+    public function handle(
+        AssistantTurn $turn,
+        Post $post,
+        ?string $assistantMessage,
+        ?float $costUsd,
+        ?int $durationMs,
+        ?string $resultSubtype = 'success',
+        ?string $stopReason = null,
+        ?array $usage = null,
+    ): array {
+        try {
+            $newDraft = $this->workspace->readDraft($post, $turn);
+            $newMeta = $this->workspace->readMeta($post, $turn);
+            $outline = $turn->task_type->usesPersistentSession()
+                ? $this->workspace->readOutline($post, $turn)
+                : null;
+            $snapshotDraft = $turn->snapshot_draft ?? '';
 
-        if ($newDraft !== $snapshotDraft && ! $this->draftIsValid($post, $newDraft)) {
-            $this->failTurn->handle($turn, 'The assistant produced content the editor cannot represent. Nothing was changed — try again.');
+            if (
+                ($newDraft !== $snapshotDraft && ! $this->draftIsValid($post, $newDraft))
+                || ! $this->metaIsValid($newMeta)
+            ) {
+                throw new UnexpectedValueException('The assistant output failed publishing validation.');
+            }
+
+            $hunks = $this->differ->diff($snapshotDraft, $newDraft);
+            $fieldChanges = $this->fieldChanges($turn->snapshot_meta ?? [], $newMeta);
+        } catch (Throwable $exception) {
+            if (! $exception instanceof UnexpectedValueException) {
+                report($exception);
+            }
+
+            $this->failTurn->handle(
+                $turn,
+                'The assistant produced invalid output. Nothing was changed.',
+                errorCode: 'invalid_assistant_output',
+            );
 
             return [];
         }
 
-        $hunks = $this->differ->diff($snapshotDraft, $newDraft);
-        $fieldChanges = $this->fieldChanges($turn->snapshot_meta ?? [], $this->workspace->readMeta($post));
+        return DB::transaction(function () use (
+            $turn,
+            $post,
+            $assistantMessage,
+            $costUsd,
+            $durationMs,
+            $resultSubtype,
+            $stopReason,
+            $usage,
+            $hunks,
+            $fieldChanges,
+            $outline,
+        ): array {
+            /** @var AssistantSession $session */
+            $session = AssistantSession::query()
+                ->whereKey($turn->assistant_session_id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        return DB::transaction(function () use ($turn, $post, $assistantMessage, $costUsd, $durationMs, $hunks, $fieldChanges): array {
+            /** @var AssistantTurn $lockedTurn */
+            $lockedTurn = AssistantTurn::query()->whereKey($turn->id)->lockForUpdate()->firstOrFail();
+
+            if (
+                $lockedTurn->status !== AssistantTurnStatus::Running
+                || $session->status !== AssistantSessionStatus::Running
+                || $session->active_run_token !== $lockedTurn->run_token
+            ) {
+                return [];
+            }
+
+            /** @var Post $lockedPost */
+            $lockedPost = Post::query()->withTrashed()->whereKey($post->id)->lockForUpdate()->firstOrFail();
             $changes = [];
 
             if ($hunks !== []) {
-                $this->supersede($post, [AssistantChangeType::Body]);
+                $this->supersede($lockedPost, [AssistantChangeType::Body]);
             }
 
             foreach ($hunks as $hunk) {
-                $changes[] = $this->createChange($turn, $post, AssistantChangeType::Body, $hunk);
+                $changes[] = $this->createChange($lockedTurn, $lockedPost, AssistantChangeType::Body, $hunk);
             }
 
             $fieldTypes = [];
@@ -69,23 +134,40 @@ class CompleteAssistantTurn
                 }
             }
 
-            $this->supersede($post, array_values($fieldTypes));
+            $this->supersede($lockedPost, array_values($fieldTypes));
 
             foreach ($fieldTypes as $key => $type) {
-                $changes[] = $this->createChange($turn, $post, $type, $fieldChanges[$key]);
+                $changes[] = $this->createChange($lockedTurn, $lockedPost, $type, $fieldChanges[$key]);
             }
 
-            $turn->forceFill([
+            $lockedTurn->forceFill([
                 'status' => AssistantTurnStatus::Completed,
                 'assistant_message' => $assistantMessage,
+                'result_subtype' => $resultSubtype,
+                'stop_reason' => $stopReason,
+                'usage' => $usage,
                 'cost_usd' => $costUsd,
                 'duration_ms' => $durationMs,
+                'error_code' => null,
+                'error_message' => null,
+                'retry_at' => null,
+                'finished_at' => now(),
             ])->save();
 
-            $turn->session?->forceFill([
+            $sessionUpdates = [
                 'status' => AssistantSessionStatus::Idle,
+                'active_run_token' => null,
                 'turn_started_at' => null,
-            ])->save();
+            ];
+
+            if ($lockedTurn->task_type->usesPersistentSession()) {
+                $sessionUpdates['resume_ready'] = true;
+                $sessionUpdates['conversation_model'] = $lockedTurn->task_type->model();
+                $this->applyOutlineResult($session, $lockedTurn, $outline, $sessionUpdates);
+            }
+
+            $session->forceFill($sessionUpdates)->save();
+            $turn->setRawAttributes($lockedTurn->getAttributes(), true);
 
             return $changes;
         });
@@ -99,6 +181,25 @@ class CompleteAssistantTurn
             ['body' => $document->toArray()],
             ['body' => [new ValidRichTextDocument]],
         )->passes();
+    }
+
+    /** @param array<string, mixed> $meta */
+    private function metaIsValid(array $meta): bool
+    {
+        return Validator::make($meta, [
+            'title' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'slug' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'excerpt' => ['sometimes', 'nullable', 'string', 'max:500'],
+            'seo_title' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'meta_description' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'og_title' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'og_description' => ['sometimes', 'nullable', 'string', 'max:500'],
+            'tags' => ['sometimes', 'array', 'max:10'],
+            'tags.*' => ['required', 'string', 'max:50', 'distinct:ignore_case'],
+            'category' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'featured_image_alt' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'featured_image_caption' => ['sometimes', 'nullable', 'string', 'max:500'],
+        ])->passes();
     }
 
     /**
@@ -153,5 +254,32 @@ class CompleteAssistantTurn
             'payload' => $payload,
             'base_lock_version' => $post->lock_version,
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $sessionUpdates
+     */
+    private function applyOutlineResult(
+        AssistantSession $session,
+        AssistantTurn $turn,
+        ?string $outline,
+        array &$sessionUpdates,
+    ): void {
+        $step = ($turn->context ?? [])['step'] ?? null;
+
+        if ($outline !== null) {
+            if ($session->outline_markdown !== $outline) {
+                $sessionUpdates['outline_version'] = $session->outline_version + 1;
+            }
+
+            $sessionUpdates['outline_markdown'] = $outline;
+            $sessionUpdates['outline_ready'] = $turn->task_type !== AssistantTaskType::Outline || $step !== 'draft';
+
+            return;
+        }
+
+        if ($turn->task_type === AssistantTaskType::Outline && $step === 'start') {
+            $sessionUpdates['outline_ready'] = false;
+        }
     }
 }

@@ -12,6 +12,7 @@ use App\Domain\Publishing\Markdown\MarkdownParser;
 use App\Domain\Publishing\Models\Post;
 use App\Domain\Publishing\Rules\ValidRichTextDocument;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 /**
  * Turns an accepted proposal into a SavePost payload, re-resolved against
@@ -39,7 +40,13 @@ class ResolveChangePayload
         }
 
         if ($change->type === AssistantChangeType::Tags) {
-            $new = is_array($payload['new'] ?? null) ? array_values(array_filter($payload['new'], is_string(...))) : [];
+            $old = $this->validatedTags($payload['old'] ?? null);
+            $new = $this->validatedTags($payload['new'] ?? null);
+            $current = $post->tags()->pluck('name')->all();
+
+            if ($this->canonicalTags($old) !== $this->canonicalTags($current)) {
+                throw StaleChangeException::becauseContentMoved();
+            }
 
             return ['tags' => $new, 'lock_version' => $post->lock_version];
         }
@@ -60,7 +67,11 @@ class ResolveChangePayload
 
         $new = $payload['new'] ?? null;
 
-        return [$attribute => is_string($new) ? $new : null, 'lock_version' => $post->lock_version];
+        if (! $this->scalarValueIsValid($change->type, $new)) {
+            throw StaleChangeException::becauseContentMoved();
+        }
+
+        return [$attribute => $new, 'lock_version' => $post->lock_version];
     }
 
     /**
@@ -76,10 +87,8 @@ class ResolveChangePayload
         $oldBlocks = is_string($payload['old_blocks'] ?? null) ? $payload['old_blocks'] : '';
         $newBlocks = is_string($payload['new_blocks'] ?? null) ? $payload['new_blocks'] : '';
         $anchorBefore = is_string($payload['anchor_before'] ?? null) ? $payload['anchor_before'] : null;
-
-        $spliced = $oldBlocks === ''
-            ? $this->insert($currentMarkdown, $newBlocks, $anchorBefore)
-            : $this->replace($currentMarkdown, $oldBlocks, $newBlocks, $anchorBefore);
+        $anchorAfter = is_string($payload['anchor_after'] ?? null) ? $payload['anchor_after'] : null;
+        $spliced = $this->spliceExact($currentMarkdown, $oldBlocks, $newBlocks, $anchorBefore, $anchorAfter);
 
         $document = $this->parser->parse($spliced, $this->workspace->mediaMap($post));
 
@@ -95,50 +104,156 @@ class ResolveChangePayload
         return $document->toArray();
     }
 
-    private function insert(string $markdown, string $newBlocks, ?string $anchorBefore): string
-    {
+    private function spliceExact(
+        string $markdown,
+        string $oldBlocks,
+        string $newBlocks,
+        ?string $anchorBefore,
+        ?string $anchorAfter,
+    ): string {
+        $markdown = rtrim($markdown, "\n");
+
+        if ($oldBlocks === '') {
+            return $this->insertExact($markdown, $newBlocks, $anchorBefore, $anchorAfter);
+        }
+
+        $target = $this->blockSequence($anchorBefore, $oldBlocks, $anchorAfter);
+        $replacement = $this->blockSequence(
+            $anchorBefore,
+            $newBlocks === '' ? null : $newBlocks,
+            $anchorAfter,
+        );
+
+        if (! $this->targetIsUnambiguous($markdown, $target, $anchorBefore, $anchorAfter)) {
+            throw StaleChangeException::becauseContentMoved();
+        }
+
+        return $this->withTerminalNewline($this->replaceFirst($markdown, $target, $replacement));
+    }
+
+    private function insertExact(
+        string $markdown,
+        string $newBlocks,
+        ?string $anchorBefore,
+        ?string $anchorAfter,
+    ): string {
         if ($newBlocks === '') {
             throw StaleChangeException::becauseContentMoved();
         }
 
-        if ($anchorBefore === null || ! str_contains($markdown, $anchorBefore)) {
-            return rtrim($markdown) === ''
-                ? $newBlocks."\n"
-                : rtrim($markdown, "\n")."\n\n".$newBlocks."\n";
+        if ($anchorBefore === null && $anchorAfter === null) {
+            if ($markdown !== '') {
+                throw StaleChangeException::becauseContentMoved();
+            }
+
+            return $this->withTerminalNewline($newBlocks);
         }
 
-        $position = strpos($markdown, $anchorBefore);
+        $target = $this->blockSequence($anchorBefore, null, $anchorAfter);
+        $replacement = $this->blockSequence($anchorBefore, $newBlocks, $anchorAfter);
 
-        if ($position === false) {
+        if (! $this->targetIsUnambiguous($markdown, $target, $anchorBefore, $anchorAfter)) {
             throw StaleChangeException::becauseContentMoved();
         }
 
-        $insertAt = $position + strlen($anchorBefore);
-
-        return substr($markdown, 0, $insertAt)."\n\n".$newBlocks.substr($markdown, $insertAt);
+        return $this->withTerminalNewline($this->replaceFirst($markdown, $target, $replacement));
     }
 
-    private function replace(string $markdown, string $oldBlocks, string $newBlocks, ?string $anchorBefore): string
-    {
-        $occurrences = substr_count($markdown, $oldBlocks);
+    private function targetIsUnambiguous(
+        string $markdown,
+        string $target,
+        ?string $anchorBefore,
+        ?string $anchorAfter,
+    ): bool {
+        if ($target === '' || substr_count($markdown, $target) !== 1) {
+            return false;
+        }
 
-        if ($occurrences === 0) {
+        if ($anchorBefore === null && ! str_starts_with($markdown, $target)) {
+            return false;
+        }
+
+        return $anchorAfter !== null || str_ends_with($markdown, $target);
+    }
+
+    private function blockSequence(?string ...$blocks): string
+    {
+        return implode("\n\n", array_values(array_filter(
+            $blocks,
+            static fn (?string $block): bool => $block !== null && $block !== '',
+        )));
+    }
+
+    private function withTerminalNewline(string $markdown): string
+    {
+        return $markdown === '' ? '' : $markdown."\n";
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function validatedTags(mixed $value): array
+    {
+        if (! is_array($value) || ! array_is_list($value)) {
             throw StaleChangeException::becauseContentMoved();
         }
 
-        if ($occurrences === 1) {
-            return $this->replaceFirst($markdown, $oldBlocks, $newBlocks);
-        }
+        $tags = [];
 
-        if ($anchorBefore !== null) {
-            $anchored = $anchorBefore."\n\n".$oldBlocks;
-
-            if (substr_count($markdown, $anchored) === 1) {
-                return $this->replaceFirst($markdown, $anchored, $anchorBefore."\n\n".$newBlocks);
+        foreach ($value as $tag) {
+            if (! is_string($tag)) {
+                throw StaleChangeException::becauseContentMoved();
             }
+
+            $tags[] = trim($tag);
         }
 
-        throw StaleChangeException::becauseContentMoved();
+        if (Validator::make(
+            ['tags' => $tags],
+            [
+                'tags' => ['array', 'max:10'],
+                'tags.*' => ['required', 'string', 'max:50', 'distinct:ignore_case'],
+            ],
+        )->fails()) {
+            throw StaleChangeException::becauseContentMoved();
+        }
+
+        return $tags;
+    }
+
+    /**
+     * @param  array<mixed>  $tags
+     * @return list<string>
+     */
+    private function canonicalTags(array $tags): array
+    {
+        $canonical = array_map(
+            static fn (mixed $tag): string => Str::lower(trim(is_string($tag) ? $tag : '')),
+            $tags,
+        );
+        sort($canonical);
+
+        return $canonical;
+    }
+
+    private function scalarValueIsValid(AssistantChangeType $type, mixed $value): bool
+    {
+        $maximum = match ($type) {
+            AssistantChangeType::Excerpt,
+            AssistantChangeType::OgDescription,
+            AssistantChangeType::FeaturedImageCaption => 500,
+            AssistantChangeType::Title,
+            AssistantChangeType::SeoTitle,
+            AssistantChangeType::MetaDescription,
+            AssistantChangeType::OgTitle,
+            AssistantChangeType::FeaturedImageAlt => 255,
+            default => null,
+        };
+
+        return $maximum !== null && Validator::make(
+            ['value' => $value],
+            ['value' => ['nullable', 'string', 'max:'.$maximum]],
+        )->passes();
     }
 
     private function replaceFirst(string $subject, string $search, string $replace): string
@@ -149,10 +264,6 @@ class ResolveChangePayload
             throw StaleChangeException::becauseContentMoved();
         }
 
-        $result = substr($subject, 0, $position).$replace.substr($subject, $position + strlen($search));
-
-        // A deletion can leave doubled blank lines behind; collapse them so
-        // the spliced markdown stays in the serializer's normal form.
-        return (string) preg_replace("/\n{3,}/", "\n\n", $result);
+        return substr($subject, 0, $position).$replace.substr($subject, $position + strlen($search));
     }
 }

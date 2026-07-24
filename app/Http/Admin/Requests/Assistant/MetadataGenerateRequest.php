@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace App\Http\Admin\Requests\Assistant;
 
 use App\Domain\Assistant\Prompts\MetadataPrompt;
+use App\Http\Admin\Requests\Assistant\Concerns\ResolvesAssistantRequestId;
 use App\Http\AuthenticatedRequest;
 use Illuminate\Validation\Rule;
 
 class MetadataGenerateRequest extends AuthenticatedRequest
 {
+    use ResolvesAssistantRequestId;
+
     public function authorize(): bool
     {
         return $this->authenticatedUser()->can('update', $this->boundPost());
@@ -19,8 +22,9 @@ class MetadataGenerateRequest extends AuthenticatedRequest
     public function rules(): array
     {
         return [
-            'fields' => ['required', 'array', 'min:1'],
-            'fields.*' => ['string', Rule::in(MetadataPrompt::GENERATABLE_FIELDS)],
+            'fields' => ['required', 'array', 'min:1', 'max:'.count(MetadataPrompt::GENERATABLE_FIELDS)],
+            'fields.*' => ['string', 'distinct', Rule::in(MetadataPrompt::GENERATABLE_FIELDS)],
+            ...$this->assistantRequestIdRules(),
         ];
     }
 

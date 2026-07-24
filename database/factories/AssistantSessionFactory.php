@@ -29,6 +29,12 @@ class AssistantSessionFactory extends Factory
             'post_id' => Post::factory(),
             'claude_session_id' => fake()->uuid(),
             'status' => AssistantSessionStatus::Idle,
+            'active_run_token' => null,
+            'resume_ready' => false,
+            'conversation_model' => null,
+            'outline_markdown' => null,
+            'outline_ready' => false,
+            'outline_version' => 0,
             'turn_started_at' => null,
         ];
     }
@@ -37,6 +43,7 @@ class AssistantSessionFactory extends Factory
     {
         return $this->state(fn (): array => [
             'status' => AssistantSessionStatus::Running,
+            'active_run_token' => fake()->uuid(),
             'turn_started_at' => now(),
         ]);
     }
