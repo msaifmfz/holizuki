@@ -8,6 +8,12 @@ import {
 } from '@/analytics/tracker';
 import ShareTools from '@/components/public/share-tools';
 
+function queuedAnalyticsCommands() {
+    return (window.dataLayer ?? []).map((entry) =>
+        Array.from(entry as ArrayLike<unknown>),
+    );
+}
+
 describe('share tools analytics', () => {
     beforeEach(() => {
         window.localStorage.clear();
@@ -33,7 +39,7 @@ describe('share tools analytics', () => {
 
         writeText.mockResolvedValueOnce();
         await user.click(screen.getByRole('button', { name: 'Copy link' }));
-        expect(window.dataLayer).toContainEqual([
+        expect(queuedAnalyticsCommands()).toContainEqual([
             'event',
             'share',
             {
@@ -47,7 +53,7 @@ describe('share tools analytics', () => {
         window.dataLayer = [];
         writeText.mockRejectedValueOnce(new Error('Clipboard denied'));
         await user.click(screen.getByRole('button', { name: 'Copy link' }));
-        expect(window.dataLayer).not.toContainEqual([
+        expect(queuedAnalyticsCommands()).not.toContainEqual([
             'event',
             'share',
             expect.anything(),

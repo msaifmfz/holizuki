@@ -11,6 +11,28 @@ use Throwable;
 
 class CheckAnalyticsHealth
 {
+    /** @var list<string> */
+    private const array UTC_TIMEZONES = [
+        'Etc/GMT',
+        'Etc/GMT+0',
+        'Etc/GMT-0',
+        'Etc/GMT0',
+        'Etc/Greenwich',
+        'Etc/UCT',
+        'Etc/UTC',
+        'Etc/Universal',
+        'Etc/Zulu',
+        'GMT',
+        'GMT+0',
+        'GMT-0',
+        'GMT0',
+        'Greenwich',
+        'UCT',
+        'UTC',
+        'Universal',
+        'Zulu',
+    ];
+
     public function __construct(private readonly AnalyticsAdminGateway $admin) {}
 
     public function handle(): AnalyticsHealthResult
@@ -41,7 +63,7 @@ class CheckAnalyticsHealth
             $errors[] = 'The configured GA measurement ID does not match the web stream.';
         }
 
-        if ($property->timezone !== config()->string('app.timezone')) {
+        if (! $this->timezonesMatch($property->timezone, config()->string('app.timezone'))) {
             $errors[] = 'The GA property timezone must match the application timezone.';
         }
 
@@ -104,6 +126,15 @@ class CheckAnalyticsHealth
         }
 
         return $errors;
+    }
+
+    private function timezonesMatch(string $propertyTimezone, string $applicationTimezone): bool
+    {
+        return $propertyTimezone === $applicationTimezone
+            || (
+                in_array($propertyTimezone, self::UTC_TIMEZONES, true)
+                && in_array($applicationTimezone, self::UTC_TIMEZONES, true)
+            );
     }
 
     private function sanitizedError(Throwable $exception): string

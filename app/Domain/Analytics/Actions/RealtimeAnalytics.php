@@ -13,6 +13,12 @@ use Throwable;
 
 class RealtimeAnalytics
 {
+    private const int ACTIVE_POST_LIMIT = 20;
+
+    private const string POST_SCREEN_PATTERN = '/^\[post:([1-9]\d*)\](?:\s|$)/';
+
+    private const int REALTIME_SCREEN_LIMIT = 10000;
+
     public function __construct(private readonly AnalyticsReportingGateway $gateway) {}
 
     /** @return array{available: bool, stale: bool, readers: int|null, activePosts: list<array{contentKey: string, title: string|null, readers: int}>, fetchedAt: string|null} */
@@ -40,9 +46,9 @@ class RealtimeAnalytics
             $page = $this->gateway->realtime(new AnalyticsReportRequest(
                 'today',
                 'today',
-                ['customEvent:content_key'],
+                ['unifiedScreenName'],
                 ['activeUsers'],
-                limit: 20,
+                limit: self::REALTIME_SCREEN_LIMIT,
             ));
             $activePostReaders = [];
             $siteRow = $sitePage->rows[0] ?? null;
@@ -51,28 +57,39 @@ class RealtimeAnalytics
                 : (int) round($siteRow->metrics['activeUsers'] ?? 0);
 
             foreach ($page->rows as $row) {
-                $contentKey = $row->dimensions['customEvent:content_key'] ?? '';
+                $screenName = $row->dimensions['unifiedScreenName'] ?? '';
                 $activeUsers = (int) round($row->metrics['activeUsers'] ?? 0);
+                $matches = [];
 
-                if (preg_match('/^post:\d+$/', $contentKey) === 1) {
-                    $activePostReaders[$contentKey] = $activeUsers;
+                if (preg_match(self::POST_SCREEN_PATTERN, $screenName, $matches) !== 1) {
+                    continue;
                 }
+
+                $postId = (int) $matches[1];
+                $activePostReaders[$postId] = max($activePostReaders[$postId] ?? 0, $activeUsers);
             }
-            $postIds = array_map(
-                static fn (string $contentKey): int => (int) str($contentKey)->after('post:')->toString(),
-                array_keys($activePostReaders),
-            );
-            $titles = Post::query()->whereKey($postIds)->pluck('title', 'id');
+            $titles = Post::query()
+                ->published()
+                ->whereKey(array_keys($activePostReaders))
+                ->pluck('title', 'id');
             $posts = [];
-            foreach ($activePostReaders as $contentKey => $activeUsers) {
-                $postId = (int) str($contentKey)->after('post:')->toString();
+            foreach ($activePostReaders as $postId => $activeUsers) {
                 $title = $titles->get($postId);
+                if (! is_string($title)) {
+                    continue;
+                }
+
                 $posts[] = [
-                    'contentKey' => $contentKey,
-                    'title' => is_string($title) ? $title : null,
+                    'contentKey' => 'post:'.$postId,
+                    'title' => $title,
                     'readers' => $activeUsers,
                 ];
             }
+            usort(
+                $posts,
+                static fn (array $left, array $right): int => $right['readers'] <=> $left['readers'],
+            );
+            $posts = array_slice($posts, 0, self::ACTIVE_POST_LIMIT);
 
             $result = [
                 'available' => true,

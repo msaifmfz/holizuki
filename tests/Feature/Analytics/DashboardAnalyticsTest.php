@@ -399,13 +399,14 @@ it('deduplicates custom snapshot preparation and validates inclusive range limit
 it('returns exact cached realtime readers and a marked stale fallback', function (): void {
     $user = User::factory()->create();
     $post = Post::factory()->published()->create(['title' => 'Realtime post']);
+    Post::factory()->published()->create(['title' => 'About']);
     $gateway = new class($post->id) implements AnalyticsReportingGateway
     {
         public int $calls = 0;
 
         public bool $fail = false;
 
-        public function __construct(private readonly int $postId) {}
+        public function __construct(private readonly int $realtimePostId) {}
 
         public function report(AnalyticsReportRequest $request): AnalyticsReportPage
         {
@@ -420,20 +421,33 @@ it('returns exact cached realtime readers and a marked stale fallback', function
 
             $this->calls++;
 
-            return $request->dimensions === []
-                ? new AnalyticsReportPage([
+            if ($request->dimensions === []) {
+                return new AnalyticsReportPage([
                     new AnalyticsReportRow([], ['activeUsers' => 7]),
-                ], 1)
-                : new AnalyticsReportPage([
-                    new AnalyticsReportRow(
-                        ['customEvent:content_key' => 'post:'.$this->postId],
-                        ['activeUsers' => 5],
-                    ),
-                    new AnalyticsReportRow(
-                        ['customEvent:content_key' => 'post:999999'],
-                        ['activeUsers' => 4],
-                    ),
-                ], 2);
+                ], 1);
+            }
+
+            expect($request->dimensions)->toBe(['unifiedScreenName']);
+            expect($request->limit)->toBe(10000);
+
+            return new AnalyticsReportPage([
+                new AnalyticsReportRow(
+                    ['unifiedScreenName' => 'About - Holizuki'],
+                    ['activeUsers' => 6],
+                ),
+                new AnalyticsReportRow(
+                    ['unifiedScreenName' => '[post:'.$this->realtimePostId.'] Realtime post - Holizuki'],
+                    ['activeUsers' => 5],
+                ),
+                new AnalyticsReportRow(
+                    ['unifiedScreenName' => '[post:'.$this->realtimePostId.'] Previous title - Holizuki'],
+                    ['activeUsers' => 3],
+                ),
+                new AnalyticsReportRow(
+                    ['unifiedScreenName' => '[post:999999] Unknown post - Holizuki'],
+                    ['activeUsers' => 4],
+                ),
+            ], 4);
         }
     };
     app()->instance(AnalyticsReportingGateway::class, $gateway);
@@ -462,6 +476,63 @@ it('returns exact cached realtime readers and a marked stale fallback', function
         ->getJson(route('dashboard.analytics.realtime'))
         ->assertOk()
         ->assertJson(['available' => true, 'stale' => true, 'readers' => 7]);
+});
+
+it('returns the twenty busiest published posts after filtering realtime screens', function (): void {
+    $user = User::factory()->create();
+    $posts = Post::factory()->published()->count(21)->create();
+    $draft = Post::factory()->create();
+    $rows = $posts
+        ->values()
+        ->map(
+            static fn (Post $post, int $index): AnalyticsReportRow => new AnalyticsReportRow(
+                ['unifiedScreenName' => '[post:'.$post->id.'] '.$post->title.' - Holizuki'],
+                ['activeUsers' => $index + 1],
+            ),
+        )
+        ->all();
+    $rows[] = new AnalyticsReportRow(
+        ['unifiedScreenName' => '[post:'.$draft->id.'] Draft - Holizuki'],
+        ['activeUsers' => 100],
+    );
+    $rows[] = new AnalyticsReportRow(
+        ['unifiedScreenName' => 'About - Holizuki'],
+        ['activeUsers' => 100],
+    );
+    $gateway = new readonly class($rows) implements AnalyticsReportingGateway
+    {
+        /** @param list<AnalyticsReportRow> $rows */
+        public function __construct(private array $rows) {}
+
+        public function report(AnalyticsReportRequest $request): AnalyticsReportPage
+        {
+            throw new RuntimeException('Not used.');
+        }
+
+        public function realtime(AnalyticsReportRequest $request): AnalyticsReportPage
+        {
+            if ($request->dimensions === []) {
+                return new AnalyticsReportPage([
+                    new AnalyticsReportRow([], ['activeUsers' => 100]),
+                ], 1);
+            }
+
+            expect($request->limit)->toBe(10000);
+
+            return new AnalyticsReportPage($this->rows, count($this->rows));
+        }
+    };
+    app()->instance(AnalyticsReportingGateway::class, $gateway);
+
+    $response = $this->actingAs($user)
+        ->getJson(route('dashboard.analytics.realtime'))
+        ->assertOk()
+        ->assertJsonCount(20, 'activePosts')
+        ->assertJsonMissing(['contentKey' => 'post:'.$draft->id]);
+
+    foreach (range(21, 2) as $index => $expectedReaders) {
+        $response->assertJsonPath('activePosts.'.$index.'.readers', $expectedReaders);
+    }
 });
 
 it('renders every author analytics and community workspace for an administrator', function (): void {

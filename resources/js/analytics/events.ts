@@ -43,6 +43,8 @@ type EventParameters = {
     };
 };
 
+export const ANALYTICS_STRING_LIMIT = 256;
+
 export type AnalyticsEventName = keyof EventParameters;
 
 const allowedParameterKeys: {
@@ -100,7 +102,7 @@ export function validateAnalyticsEvent<Name extends AnalyticsEventName>(
 
         if (typeof value === 'string') {
             if (
-                value.length > 256 ||
+                value.length > ANALYTICS_STRING_LIMIT ||
                 emailPattern.test(value) ||
                 /[\r\n]/.test(value) ||
                 (sanitizedUrlKeys.has(key) &&

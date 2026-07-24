@@ -9,9 +9,16 @@ import {
     configureAnalytics,
     ensureGoogleAnalyticsLoaded,
     isAnalyticsEligible,
+    pageViewParameters,
     resetAnalyticsForTests,
     trackAnalyticsEvent,
 } from '@/analytics/tracker';
+
+function queuedAnalyticsCommands() {
+    return (window.dataLayer ?? []).map((entry) =>
+        Array.from(entry as ArrayLike<unknown>),
+    );
+}
 
 describe('analytics tracker', () => {
     beforeEach(() => {
@@ -43,7 +50,10 @@ describe('analytics tracker', () => {
         expect(ensureGoogleAnalyticsLoaded()).toBe(true);
         expect(ensureGoogleAnalyticsLoaded()).toBe(true);
         expect(document.querySelectorAll('#holizuki-ga4')).toHaveLength(1);
-        expect(window.dataLayer).toContainEqual([
+        expect(Object.prototype.toString.call(window.dataLayer?.[0])).toBe(
+            '[object Arguments]',
+        );
+        expect(queuedAnalyticsCommands()).toContainEqual([
             'config',
             'G-TEST123',
             expect.objectContaining({ send_page_view: false }),
@@ -100,10 +110,35 @@ describe('analytics tracker', () => {
                 content_key: 'post:1',
             }),
         ).toBe(true);
-        expect(window.dataLayer).toContainEqual([
+        expect(queuedAnalyticsCommands()).toContainEqual([
             'event',
             'share',
             expect.objectContaining({ item_id: 'post:1' }),
+        ]);
+    });
+
+    it('marks post page titles for realtime attribution and applies them to subsequent events', () => {
+        saveAnalyticsConsent('v1', 'accepted', 180);
+        const parameters = pageViewParameters(
+            'https://example.com/posts/a',
+            'A useful article - Holizuki',
+            { id: 42 },
+        );
+
+        expect(parameters.page_title).toBe(
+            '[post:42] A useful article - Holizuki',
+        );
+        const longPageTitle = pageViewParameters(
+            'https://example.com/posts/a',
+            'x'.repeat(300),
+            { id: 42 },
+        ).page_title;
+        expect(longPageTitle).toHaveLength(256);
+        expect(longPageTitle).toMatch(/^\[post:42\] /);
+        expect(trackAnalyticsEvent('page_view', parameters)).toBe(true);
+        expect(queuedAnalyticsCommands()).toContainEqual([
+            'set',
+            { page_title: '[post:42] A useful article - Holizuki' },
         ]);
     });
 
@@ -117,7 +152,7 @@ describe('analytics tracker', () => {
                 source_content_key: undefined,
             }),
         ).toBe(true);
-        expect(window.dataLayer).toContainEqual([
+        expect(queuedAnalyticsCommands()).toContainEqual([
             'event',
             'sign_up',
             { method: 'newsletter' },

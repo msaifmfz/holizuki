@@ -51,12 +51,15 @@ function startPartialNavigation() {
     });
 }
 
+function queuedAnalyticsCommands() {
+    return (window.dataLayer ?? []).map((entry) =>
+        Array.from(entry as ArrayLike<unknown>),
+    );
+}
+
 function pageViewCount() {
-    return (window.dataLayer ?? []).filter(
-        (entry) =>
-            Array.isArray(entry) &&
-            entry[0] === 'event' &&
-            entry[1] === 'page_view',
+    return queuedAnalyticsCommands().filter(
+        (entry) => entry[0] === 'event' && entry[1] === 'page_view',
     ).length;
 }
 
@@ -83,7 +86,7 @@ describe('public analytics component', () => {
         await waitFor(() => {
             expect(document.querySelector('#holizuki-ga4')).not.toBeNull();
         });
-        expect(window.dataLayer).toContainEqual([
+        expect(queuedAnalyticsCommands()).toContainEqual([
             'event',
             'page_view',
             expect.objectContaining({
@@ -117,7 +120,7 @@ describe('public analytics component', () => {
         await act(async () => {
             await vi.advanceTimersByTimeAsync(29_000);
         });
-        expect(window.dataLayer).not.toContainEqual([
+        expect(queuedAnalyticsCommands()).not.toContainEqual([
             'event',
             'article_engaged',
             expect.anything(),
@@ -126,7 +129,7 @@ describe('public analytics component', () => {
         await act(async () => {
             await vi.advanceTimersByTimeAsync(1_000);
         });
-        expect(window.dataLayer).toContainEqual([
+        expect(queuedAnalyticsCommands()).toContainEqual([
             'event',
             'article_engaged',
             { content_key: 'post:42' },
@@ -153,7 +156,7 @@ describe('public analytics component', () => {
         await waitFor(() => {
             expect(pageViewCount()).toBe(1);
         });
-        expect(window.dataLayer).toContainEqual([
+        expect(queuedAnalyticsCommands()).toContainEqual([
             'event',
             'page_view',
             expect.objectContaining({

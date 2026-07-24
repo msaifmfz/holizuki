@@ -1,6 +1,7 @@
 import { readAnalyticsConsent } from '@/analytics/consent';
 import type { AnalyticsConsent } from '@/analytics/consent';
 import {
+    ANALYTICS_STRING_LIMIT,
     sanitizedPath,
     sanitizedUrl,
     validateAnalyticsEvent,
@@ -66,8 +67,9 @@ export function ensureGoogleAnalyticsLoaded() {
     }
 
     window.dataLayer = window.dataLayer ?? [];
-    window.gtag = (...arguments_: unknown[]) => {
-        window.dataLayer?.push(arguments_);
+    window.gtag = function () {
+        // eslint-disable-next-line prefer-rest-params -- gtag.js requires the native Arguments object.
+        window.dataLayer?.push(arguments);
     };
     window.gtag('consent', 'default', {
         analytics_storage: 'granted',
@@ -104,6 +106,16 @@ export function trackAnalyticsEvent<Name extends AnalyticsEventName>(
         !window.gtag
     ) {
         return false;
+    }
+
+    if (name === 'page_view') {
+        const pageTitle = (
+            sanitizedParameters as AnalyticsEventParameters<'page_view'>
+        ).page_title;
+
+        if (typeof pageTitle === 'string') {
+            window.gtag('set', { page_title: pageTitle });
+        }
     }
 
     window.gtag('event', name, sanitizedParameters);
@@ -166,10 +178,14 @@ export function pageViewParameters(
         word_count_band?: string;
         published_at?: string | null;
     },
-) {
+): AnalyticsEventParameters<'page_view'> {
+    const analyticsTitle =
+        typeof post?.id === 'number'
+            ? postAnalyticsTitle(title, post.id)
+            : title;
     const parameters: AnalyticsEventParameters<'page_view'> = {
         page_location: sanitizedUrl(pageUrl),
-        page_title: title,
+        page_title: analyticsTitle,
     };
 
     if (document.referrer) {
@@ -183,7 +199,17 @@ export function pageViewParameters(
         parameters.publication_age_band = publicationAgeBand(post.published_at);
     }
 
-    return removeUndefined(parameters);
+    return removeUndefined<'page_view'>(parameters);
+}
+
+function postAnalyticsTitle(title: string, postId: number) {
+    const prefix = `[post:${postId}]`;
+
+    if (title === '') {
+        return prefix;
+    }
+
+    return `${prefix} ${title}`.slice(0, ANALYTICS_STRING_LIMIT);
 }
 
 function publicationAgeBand(publishedAt?: string | null) {

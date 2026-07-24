@@ -193,6 +193,18 @@ it('blocks synchronization when identifiers timezone dimensions key event or ret
     expect(AnalyticsDailySiteMetric::query()->exists())->toBeFalse();
 });
 
+it('accepts exact timezones and equivalent UTC aliases', function (string $applicationTimezone, string $propertyTimezone): void {
+    config()->set('app.timezone', $applicationTimezone);
+    app()->instance(AnalyticsAdminGateway::class, healthyAnalyticsAdminGateway($propertyTimezone));
+
+    expect(resolve(CheckAnalyticsHealth::class)->handle()->healthy)->toBeTrue();
+})->with([
+    'Asia/Tokyo exact match' => ['Asia/Tokyo', 'Asia/Tokyo'],
+    'UTC and Etc/UTC' => ['Etc/UTC', 'UTC'],
+    'UTC and Etc/GMT' => ['UTC', 'Etc/GMT'],
+    'legacy UTC aliases' => ['Universal', 'Zulu'],
+]);
+
 it('rejects malformed service-account secrets before creating a Google client', function (): void {
     config()->set('analytics.service_account_base64', 'not base64!');
 
@@ -392,17 +404,19 @@ it('queues a serialized calendar-month backfill chain with retry-safe jobs', fun
         ->and($backoff[3])->toBeBetween(480, 600);
 });
 
-function healthyAnalyticsAdminGateway(): AnalyticsAdminGateway
+function healthyAnalyticsAdminGateway(string $timezone = 'UTC'): AnalyticsAdminGateway
 {
-    return new class implements AnalyticsAdminGateway
+    return new readonly class($timezone) implements AnalyticsAdminGateway
     {
+        public function __construct(private string $timezone) {}
+
         public function inspect(): AnalyticsPropertyState
         {
             return new AnalyticsPropertyState(
                 propertyId: '123456',
                 streamId: '987654',
                 measurementId: 'G-TEST123',
-                timezone: 'UTC',
+                timezone: $this->timezone,
                 customDimensions: config()->array('analytics.custom_dimensions'),
                 keyEvents: ['sign_up'],
                 retentionMonths: 14,
