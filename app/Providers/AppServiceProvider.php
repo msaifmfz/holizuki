@@ -41,7 +41,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        DevCommands::artisan('serve --host=localhost --port=8000 --tries=1', 'server');
+        DevCommands::artisan('serve --host=localhost --port=8000 --tries=1 --no-reload', 'server');
+        DevCommands::artisan('schedule:work', 'scheduler');
 
         $this->configureDefaults();
         $this->configureAuthorization();

@@ -2,13 +2,14 @@
 
 declare(strict_types=1);
 
-test('the development server uses the canonical local origin', function (): void {
+test('the development server uses the canonical local origin and devbox environment', function (): void {
     expect(app()->environment())->toBe('testing')
         ->and(config('database.default'))->toBe('sqlite')
         ->and(config('database.connections.sqlite.database'))->toBe(':memory:');
 
     $this->artisan('dev:list')
-        ->expectsOutputToContain('php artisan serve --host=localhost --port=8000 --tries=1')
+        ->expectsOutputToContain('php artisan serve --host=localhost --port=8000 --tries=1 --no-reload')
+        ->expectsOutputToContain('php artisan schedule:work')
         ->assertExitCode(0);
 });
 
