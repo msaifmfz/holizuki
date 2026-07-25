@@ -108,10 +108,23 @@ test('a metadata turn streams narration and records field proposals', function (
         ->toContain('event: change')
         ->toContain('event: done');
 
-    expect($runner->lastRequest?->resume)->toBeFalse()
-        ->and($runner->lastRequest?->model)->toBe(config('assistant.models.metadata'));
-
     $turn = AssistantTurn::query()->firstOrFail();
+    $request = $runner->lastRequest ?? throw new RuntimeException('Expected an agent request.');
+    $runDirectory = 'runs/'.$turn->run_token;
+
+    expect($request->resume)->toBeFalse()
+        ->and($request->model)->toBe(config('assistant.models.metadata'))
+        ->and($request->workspacePath)->toBe($this->workspaceRoot.'/'.$this->post->id.'/'.$runDirectory)
+        ->and($request->prompt)->toContain($request->workspacePath.'/draft.md')
+        ->and($request->prompt)->toContain($request->workspacePath.'/meta.json')
+        ->and($request->systemPrompt)->toContain($request->workspacePath.'/draft.md')
+        ->and($request->systemPrompt)->toContain($request->workspacePath.'/meta.json')
+        ->and($request->allowedTools)->toBe([
+            "Read({$runDirectory}/draft.md)",
+            "Read({$runDirectory}/meta.json)",
+            "Edit({$runDirectory}/meta.json)",
+        ]);
+
     expect($turn->status)->toBe(AssistantTurnStatus::Completed)
         ->and($turn->assistant_message)->toContain('Reading the draft')
         ->and((float) $turn->cost_usd)->toBe(0.012)

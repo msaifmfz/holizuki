@@ -30,19 +30,20 @@ final readonly class AgentRequestFactory
         $taskType = $turn->task_type;
         [$sessionId, $resume] = $this->session($turn, $taskType);
         $runDirectory = 'runs/'.$turn->run_token;
+        $workspacePath = $this->workspace->pathFor($post, $turn);
 
         return new AgentRequest(
             prompt: <<<PROMPT
-            Every relative article path in the task below refers to {$runDirectory}/. Never use root-level article files.
+            The article files in the task below are inside {$workspacePath}/. When calling file tools, resolve article filenames to absolute paths such as {$workspacePath}/draft.md and {$workspacePath}/meta.json. Never use a root-level /runs path.
 
             {$prompt}
             PROMPT,
             workingDirectory: $this->workspace->rootFor($post),
-            workspacePath: $this->workspace->pathFor($post, $turn),
+            workspacePath: $workspacePath,
             model: $taskType->model(),
             sessionId: $sessionId,
             resume: $resume,
-            systemPrompt: $this->systemPrompt->build($runDirectory),
+            systemPrompt: $this->systemPrompt->build($workspacePath),
             allowedTools: $this->toolRules($taskType, $runDirectory),
             disallowedTools: $this->configuredTools('disallowed_tools'),
             maxTurns: $taskType->maxTurns(),
