@@ -1,8 +1,9 @@
 import { Head } from '@inertiajs/react';
+
 import Pagination from '@/components/pagination';
-import ArchiveHeader from '@/components/public/archive-header';
 import EmptyState from '@/components/public/empty-state';
-import PostGrid from '@/components/public/post-grid';
+import PageHeader, { postCount } from '@/components/public/page-header';
+import PostList from '@/components/public/post-list';
 import type { Paginated, PublicCategory, PublicPostCard } from '@/types';
 
 type Props = {
@@ -14,16 +15,16 @@ export default function CategoryShow({ category, posts }: Props) {
     return (
         <>
             <Head title={category.name} />
-            <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-12">
-                <ArchiveHeader
-                    kicker="Category"
+            <div className="mx-auto grid w-full max-w-6xl gap-12 px-4 py-12">
+                <PageHeader
+                    eyebrow="Destination"
                     title={category.name}
                     description={category.description}
-                    postsCount={category.posts_count}
+                    meta={postCount(category.posts_count)}
                 />
                 {posts.data.length > 0 ? (
-                    <>
-                        <PostGrid
+                    <div className="grid gap-14">
+                        <PostList
                             posts={posts.data}
                             contentSource="category"
                             contentLocation="listing"
@@ -32,7 +33,7 @@ export default function CategoryShow({ category, posts }: Props) {
                             paginator={posts}
                             label={`${category.name} pages`}
                         />
-                    </>
+                    </div>
                 ) : (
                     <EmptyState
                         title="No posts here yet"

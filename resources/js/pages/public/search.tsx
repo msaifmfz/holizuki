@@ -1,9 +1,10 @@
 import { Head, router } from '@inertiajs/react';
 import { Search as SearchIcon } from 'lucide-react';
 import { useState } from 'react';
+
 import Pagination from '@/components/pagination';
 import EmptyState from '@/components/public/empty-state';
-import PostGrid from '@/components/public/post-grid';
+import PostList from '@/components/public/post-list';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { search } from '@/routes/public';
@@ -29,23 +30,21 @@ export default function SearchPage({ query, posts }: Props) {
     return (
         <>
             <Head title="Search" />
-            <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-12">
-                <header className="grid gap-4 border-b pb-10">
-                    <p className="flex items-center gap-2 text-xs font-medium tracking-widest text-muted-foreground uppercase">
-                        <span className="moon-dot" aria-hidden />
-                        Search
-                    </p>
-                    <h1 className="font-display text-4xl font-semibold tracking-tight sm:text-5xl">
-                        Find a post
-                    </h1>
+            <div className="mx-auto grid w-full max-w-6xl gap-12 px-4 py-12">
+                <header className="grid gap-5 border-t border-border pt-5">
+                    <p className="eyebrow text-brand-accent">Search</p>
+                    <h1 className="display-lg">Find a post</h1>
+
+                    {/* Field and button share one hairline box, matching the
+                        newsletter form — the only two inputs on the site. */}
                     <form
                         onSubmit={submit}
-                        className="flex max-w-xl gap-2"
+                        className="flex max-w-xl border border-border"
                         role="search"
                     >
                         <div className="relative flex-1">
                             <SearchIcon
-                                className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                                className="absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground"
                                 aria-hidden
                             />
                             <Input
@@ -55,40 +54,46 @@ export default function SearchPage({ query, posts }: Props) {
                                     setTerm(event.target.value)
                                 }
                                 maxLength={100}
-                                className="pl-9"
-                                placeholder="Search posts, topics, tags, and authors"
+                                className="h-11 rounded-none border-0 pl-10 font-body shadow-none"
+                                placeholder="Try a city, a country, or a hotel name"
                                 aria-label="Search posts"
                             />
                         </div>
-                        <Button type="submit">Search</Button>
+                        <Button
+                            type="submit"
+                            className="micro-cta h-11 rounded-none px-5"
+                        >
+                            Search
+                        </Button>
                     </form>
+
                     {query !== '' && (
-                        <p className="text-sm text-muted-foreground">
+                        <p className="eyebrow text-muted-foreground">
                             {posts.total}{' '}
-                            {posts.total === 1 ? 'result' : 'results'} for “
-                            {query}”
+                            {posts.total === 1 ? 'result' : 'results'} for
+                            &ldquo;{query}&rdquo;
                         </p>
                     )}
                 </header>
 
                 {query === '' ? (
                     <EmptyState
-                        title="Search the blog"
-                        description="Type a few words above to search every published post, topic, tag, and author."
+                        title="Where do you want to go?"
+                        description="Type a place, a hotel, or a writer above to search every published trip."
                     />
                 ) : posts.data.length > 0 ? (
-                    <>
-                        <PostGrid
+                    <div className="grid gap-14">
+                        <PostList
                             posts={posts.data}
                             contentSource="search"
                             contentLocation="results"
                         />
                         <Pagination paginator={posts} label="Search results" />
-                    </>
+                    </div>
                 ) : (
                     <EmptyState
-                        title="No results"
-                        description={`Nothing matched “${query}”. Try different or shorter keywords.`}
+                        title="Nothing down that road"
+                        description={`We haven’t written about “${query}” yet. Try a shorter or broader search.`}
                     />
                 )}
             </div>

@@ -11,9 +11,9 @@ const content: Record<number, { title: string; description: string }> = {
         description: 'You don’t have permission to view this page.',
     },
     404: {
-        title: 'Page not found',
+        title: 'Looks like a wrong turn',
         description:
-            'The page you’re looking for doesn’t exist or may have moved.',
+            'The page you’re looking for doesn’t exist, or it moved on without leaving a forwarding address.',
     },
     500: {
         title: 'Something went wrong',
@@ -38,12 +38,12 @@ export default function ErrorPage({ status, portal }: ErrorPageProps) {
     return (
         <>
             <Head title={title} />
-            <div className="relative isolate mx-auto grid w-full max-w-3xl place-items-center overflow-visible px-4 py-24 text-center sm:py-32">
-                <div
-                    aria-hidden
-                    className="moon-glow absolute top-4 left-1/2 -z-10 size-80 -translate-x-1/2 rounded-full"
-                />
-                <p className="font-display text-7xl font-semibold tracking-tight sm:text-8xl">
+            {/* Shared with the admin portal, so this stays on the shared tokens
+                and the shared display face rather than reaching for anything in
+                public.css. The decorative `moon-glow` halo that used to sit
+                behind the status number went with that utility. */}
+            <div className="mx-auto grid w-full max-w-3xl place-items-center px-4 py-24 text-center sm:py-32">
+                <p className="font-display text-7xl font-semibold sm:text-8xl">
                     {status}
                 </p>
                 <h1 className="mt-4 font-display text-2xl font-semibold sm:text-3xl">

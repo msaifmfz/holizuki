@@ -1,15 +1,24 @@
 import { Form, Head } from '@inertiajs/react';
-import { KeyRound, UserX } from 'lucide-react';
+
 import {
     destroy,
     updatePassword,
 } from '@/actions/App/Http/Public/Controllers/ReaderAccountController';
 import InputError from '@/components/input-error';
+import PageHeader from '@/components/public/page-header';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
+/**
+ * A reader's own account settings.
+ *
+ * Was the one public page built out of shadcn `Card`s, which made it read as a
+ * slice of the admin console that had wandered onto the blog. It is now ruled
+ * sections on the reader surface like every other page: an eyebrow, a heading,
+ * and hairline-separated groups. The destructive section is marked by its rule
+ * and its heading rather than by a tinted border around a box.
+ */
 export default function ReaderAccount({
     passwordRules,
 }: {
@@ -18,135 +27,142 @@ export default function ReaderAccount({
     return (
         <>
             <Head title="Account" />
-            <div className="mx-auto grid w-full max-w-2xl gap-6 px-4 py-12">
-                <header>
-                    <h1 className="font-display text-3xl font-semibold tracking-tight">
-                        Your account
-                    </h1>
-                    <p className="text-sm text-muted-foreground">
-                        Manage the password for your reader account, or delete
-                        it entirely.
-                    </p>
-                </header>
+            <div className="mx-auto grid w-full max-w-2xl gap-12 px-4 py-12">
+                <PageHeader
+                    eyebrow="Account"
+                    title="Your account"
+                    description="Manage the password for your reader account, or delete it entirely."
+                />
 
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <KeyRound className="size-5" aria-hidden />
-                            Change password
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <Form
-                            {...updatePassword.form()}
-                            resetOnSuccess
-                            className="grid gap-4"
-                        >
-                            {({ processing, errors, recentlySuccessful }) => (
-                                <>
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="current-password">
-                                            Current password
-                                        </Label>
-                                        <Input
-                                            id="current-password"
-                                            name="current_password"
-                                            type="password"
-                                            autoComplete="current-password"
-                                            required
-                                        />
-                                        <InputError
-                                            message={errors.current_password}
-                                        />
-                                    </div>
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="new-password">
-                                            New password
-                                        </Label>
-                                        <Input
-                                            id="new-password"
-                                            name="password"
-                                            type="password"
-                                            autoComplete="new-password"
-                                            passwordrules={passwordRules}
-                                            required
-                                        />
-                                        <InputError message={errors.password} />
-                                    </div>
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="confirm-password">
-                                            Confirm new password
-                                        </Label>
-                                        <Input
-                                            id="confirm-password"
-                                            name="password_confirmation"
-                                            type="password"
-                                            autoComplete="new-password"
-                                            required
-                                        />
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <Button
-                                            type="submit"
-                                            disabled={processing}
-                                        >
-                                            Update password
-                                        </Button>
-                                        {recentlySuccessful && (
-                                            <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
-                                                Password updated.
-                                            </p>
-                                        )}
-                                    </div>
-                                </>
-                            )}
-                        </Form>
-                    </CardContent>
-                </Card>
+                <section
+                    className="grid gap-5 border-t border-border pt-6"
+                    aria-labelledby="change-password"
+                >
+                    <h2 id="change-password" className="display-md">
+                        Change password
+                    </h2>
 
-                <Card className="border-destructive/40">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <UserX className="size-5" aria-hidden />
-                            Delete account
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="grid gap-4">
-                        <p className="text-sm text-muted-foreground">
-                            Deleting your account removes your reader profile
-                            and all of your comments permanently. This cannot be
-                            undone.
-                        </p>
-                        <Form {...destroy.form()} className="grid gap-4">
-                            {({ processing, errors }) => (
-                                <>
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="delete-password">
-                                            Confirm with your password
-                                        </Label>
-                                        <Input
-                                            id="delete-password"
-                                            name="password"
-                                            type="password"
-                                            autoComplete="current-password"
-                                            required
-                                        />
-                                        <InputError message={errors.password} />
-                                    </div>
+                    <Form
+                        {...updatePassword.form()}
+                        resetOnSuccess
+                        className="grid gap-5"
+                    >
+                        {({ processing, errors, recentlySuccessful }) => (
+                            <>
+                                <Field
+                                    id="current-password"
+                                    name="current_password"
+                                    label="Current password"
+                                    autoComplete="current-password"
+                                    error={errors.current_password}
+                                />
+                                <Field
+                                    id="new-password"
+                                    name="password"
+                                    label="New password"
+                                    autoComplete="new-password"
+                                    passwordRules={passwordRules}
+                                    error={errors.password}
+                                />
+                                <Field
+                                    id="confirm-password"
+                                    name="password_confirmation"
+                                    label="Confirm new password"
+                                    autoComplete="new-password"
+                                />
+                                <div className="flex items-center gap-4">
                                     <Button
                                         type="submit"
-                                        variant="destructive"
-                                        className="w-fit"
                                         disabled={processing}
+                                        className="micro-cta h-10 rounded-none px-5"
                                     >
-                                        Delete my account
+                                        Update password
                                     </Button>
-                                </>
-                            )}
-                        </Form>
-                    </CardContent>
-                </Card>
+                                    {recentlySuccessful && (
+                                        <p className="text-sm font-medium text-success">
+                                            Password updated.
+                                        </p>
+                                    )}
+                                </div>
+                            </>
+                        )}
+                    </Form>
+                </section>
+
+                <section
+                    className="grid gap-5 border-t border-border pt-6"
+                    aria-labelledby="delete-account"
+                >
+                    <h2 id="delete-account" className="display-md">
+                        Delete account
+                    </h2>
+                    <p className="max-w-xl font-body leading-relaxed text-muted-foreground">
+                        Deleting your account removes your reader profile and
+                        all of your comments permanently. This cannot be undone.
+                    </p>
+
+                    <Form {...destroy.form()} className="grid gap-5">
+                        {({ processing, errors }) => (
+                            <>
+                                <Field
+                                    id="delete-password"
+                                    name="password"
+                                    label="Confirm with your password"
+                                    autoComplete="current-password"
+                                    error={errors.password}
+                                />
+                                <Button
+                                    type="submit"
+                                    variant="destructive"
+                                    disabled={processing}
+                                    className="micro-cta h-10 w-fit rounded-none px-5"
+                                >
+                                    Delete my account
+                                </Button>
+                            </>
+                        )}
+                    </Form>
+                </section>
             </div>
         </>
+    );
+}
+
+/**
+ * The three password inputs were the same eleven lines each. The label sits in
+ * the tracked-caps meta style so a form on the reader surface looks like it
+ * belongs to the blog rather than to a settings panel.
+ */
+function Field({
+    id,
+    name,
+    label,
+    autoComplete,
+    passwordRules,
+    error,
+}: {
+    id: string;
+    name: string;
+    label: string;
+    autoComplete: 'current-password' | 'new-password';
+    passwordRules?: string;
+    error?: string;
+}) {
+    return (
+        <div className="grid gap-2">
+            <Label htmlFor={id} className="eyebrow text-muted-foreground">
+                {label}
+            </Label>
+            <Input
+                id={id}
+                name={name}
+                type="password"
+                autoComplete={autoComplete}
+                passwordrules={passwordRules}
+                required
+                className="h-11 rounded-none border-border font-body shadow-none"
+            />
+            <InputError message={error} />
+        </div>
     );
 }

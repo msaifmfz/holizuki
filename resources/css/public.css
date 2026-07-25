@@ -1,0 +1,597 @@
+/* Archivo, `wdth` cut: the width axis (62–125%) is the point. It carries the
+   type hierarchy — the masthead runs expanded at 118%, structural labels run
+   narrow at 88% — so size and weight aren't doing that work alone. 88KB latin
+   against 34KB for the weight-only cut; the extra 54KB buys the whole system.
+   (Bricolage Grotesque was the other candidate and stops at 100%, condensed
+   only, which is why it lost.) */
+@import '@fontsource-variable/archivo/wdth.css';
+
+/* Newsreader, `wght` + real italics. 57KB + 63KB latin. The italic is not
+   optional here: it sets every figcaption and pull quote, and a synthesised
+   oblique on a serif skews the serifs and wrecks the stroke contrast in a way
+   it does not on a sans. */
+@import '@fontsource-variable/newsreader/wght.css';
+@import '@fontsource-variable/newsreader/wght-italic.css';
+
+/* Public reading surface.
+ *
+ * Applied by the `public-surface` class on <html> (set in app.blade.php for
+ * the first paint, then kept in sync across Inertia visits by app.tsx). It
+ * sits on the root element rather than the layout wrapper so the body
+ * background, overscroll, and Radix portals — which render into <body>,
+ * outside PublicLayout — all inherit the palette.
+ *
+ * `.public-tokens` is the same palette scoped to a subtree, for admin screens
+ * that embed reader-facing prose (the post preview) and need it to look like
+ * the live page without restyling the console chrome around it.
+ *
+ * Voice: the arrival hour. The name comes from tsuki (月), the moon, and the
+ * about page pins the thesis to "the best hour to arrive somewhere new, when
+ * the streets have emptied and you still have to find your door" — so this is
+ * dusk, not sunshine. Blue-hour paper, prussian ink, one sodium-lamp accent,
+ * moon silver for rules and meta. Hard corners.
+ *
+ * Every pair below is measured, not estimated (oklch → linear sRGB → WCAG
+ * relative luminance). Light mode, worst case first:
+ *
+ *   foreground / background     13.87    brand-accent / background    5.27
+ *   foreground / muted          12.40    brand-accent / muted         4.71
+ *   muted-foreground / muted     5.25    night-foreground / night    14.97
+ *   primary / muted              4.77    night-muted / night          7.48
+ *   primary-foreground / primary 5.83    night-accent / night         9.07
+ *
+ * Dark mode's worst pair is destructive / background at 4.73. Nothing on
+ * either surface falls below 4.5:1, so there are no large-text-only tokens.
+ */
+
+html.public-surface,
+.public-tokens {
+    --display-family: 'Archivo Variable', ui-sans-serif, system-ui, sans-serif;
+    --body-family: 'Newsreader Variable', ui-serif, Georgia, serif;
+
+    --background: oklch(0.955 0.012 268);
+    --foreground: oklch(0.255 0.045 265);
+    --card: oklch(0.982 0.008 268);
+    --card-foreground: oklch(0.255 0.045 265);
+    --popover: oklch(0.982 0.008 268);
+    --popover-foreground: oklch(0.255 0.045 265);
+    --primary: oklch(0.505 0.132 62);
+    --primary-foreground: oklch(0.985 0.008 80);
+    --secondary: oklch(0.918 0.016 268);
+    --secondary-foreground: oklch(0.315 0.04 266);
+    --muted: oklch(0.918 0.016 268);
+    --muted-foreground: oklch(0.475 0.032 266);
+    --accent: oklch(0.898 0.022 268);
+    --accent-foreground: oklch(0.315 0.04 266);
+    --brand-accent: oklch(0.5 0.035 265);
+    --success: oklch(0.475 0.098 148);
+    --warning: oklch(0.475 0.115 68);
+    --destructive: oklch(0.505 0.19 27);
+    --destructive-foreground: oklch(0.505 0.19 27);
+    --border: oklch(0.855 0.022 268);
+    --input: oklch(0.855 0.022 268);
+    --ring: oklch(0.505 0.132 62);
+
+    /* Was 1rem. The derived scale in theme.css means this one line collapses
+       every rounded-* on the surface at once — the single biggest structural
+       change in the redesign. Not quite zero: 2px keeps image corners from
+       looking chipped against a hairline border. */
+    --radius: 0.125rem;
+
+    /* Bands stay night in both modes, so their ink is mode-independent too. */
+    --night: oklch(0.215 0.048 268);
+    --night-foreground: oklch(0.945 0.012 268);
+    --night-muted: oklch(0.735 0.024 268);
+    --night-accent: oklch(0.795 0.115 68);
+}
+
+html.public-surface.dark,
+.dark .public-tokens {
+    --background: oklch(0.185 0.042 268);
+    --foreground: oklch(0.945 0.012 268);
+    --card: oklch(0.222 0.042 268);
+    --card-foreground: oklch(0.945 0.012 268);
+    --popover: oklch(0.222 0.042 268);
+    --popover-foreground: oklch(0.945 0.012 268);
+    --primary: oklch(0.775 0.115 68);
+    --primary-foreground: oklch(0.195 0.04 268);
+    --secondary: oklch(0.262 0.038 268);
+    --secondary-foreground: oklch(0.925 0.014 268);
+    --muted: oklch(0.262 0.038 268);
+    --muted-foreground: oklch(0.735 0.024 268);
+    --accent: oklch(0.288 0.04 268);
+    --accent-foreground: oklch(0.925 0.014 268);
+    --brand-accent: oklch(0.735 0.03 268);
+    --success: oklch(0.8 0.11 150);
+    --warning: oklch(0.81 0.105 78);
+    --destructive: oklch(0.62 0.17 25);
+    --destructive-foreground: oklch(0.72 0.17 25);
+    --border: oklch(0.335 0.032 268);
+    --input: oklch(0.335 0.032 268);
+    --ring: oklch(0.775 0.115 68);
+
+    --night: oklch(0.145 0.038 268);
+    --night-foreground: oklch(0.945 0.012 268);
+    --night-muted: oklch(0.735 0.024 268);
+    --night-accent: oklch(0.795 0.115 68);
+}
+
+@layer components {
+    /* ── Type scale ─────────────────────────────────────────────────────────
+     *
+     * `font-stretch` is written as plain CSS rather than a Tailwind utility so
+     * these classes don't depend on which 4.x minor is installed. The width
+     * values are the hierarchy: expanded for display, normal for content
+     * titles, narrow for structural labels.
+     *
+     * Case follows the same split — uppercase is for chrome (the masthead,
+     * section heads, eyebrows), sentence case is for anything the author
+     * wrote. Setting a post title in caps costs more legibility than it buys.
+     */
+
+    /* The references run their heroes at 96–118px, but they set short site
+       names; a three-line post title at that size fills the viewport and stops
+       being readable. 88px at 1440 is the compromise — still 2× the old
+       `text-6xl` ceiling. */
+    .display-xl {
+        @apply font-display font-semibold text-balance;
+        font-size: clamp(2.5rem, 6vw, 5.5rem);
+        font-stretch: 112%;
+        font-weight: 650;
+        line-height: 0.94;
+        letter-spacing: -0.02em;
+    }
+
+    .display-lg {
+        @apply font-display font-semibold text-balance;
+        font-size: clamp(2.25rem, 5.5vw, 4.25rem);
+        font-stretch: 110%;
+        font-weight: 640;
+        line-height: 0.95;
+        letter-spacing: -0.018em;
+    }
+
+    .display-md {
+        @apply font-display font-semibold text-balance;
+        font-size: clamp(1.375rem, 2.2vw, 1.875rem);
+        font-stretch: 104%;
+        line-height: 1.1;
+        letter-spacing: -0.012em;
+    }
+
+    /* Structural section heading — uppercase, expanded, big. The reference
+       sites run these at 60px; this tops out a little under that so it never
+       out-shouts a post title on the same screen. */
+    .section-head {
+        @apply font-display uppercase;
+        font-size: clamp(1.5rem, 3.4vw, 2.75rem);
+        font-stretch: 114%;
+        font-weight: 600;
+        line-height: 1;
+        letter-spacing: 0.005em;
+    }
+
+    /* Replaces the kicker pill that was copy-pasted onto ten pages. Narrow,
+       tracked, small — reads as a label rather than as content.
+       `.rule-label` shares the declarations rather than @apply-ing them:
+       @apply only takes real utilities, not other component classes. */
+    .eyebrow,
+    .rule-label {
+        @apply font-display uppercase;
+        font-size: 0.6875rem;
+        font-stretch: 88%;
+        font-weight: 600;
+        line-height: 1.4;
+        letter-spacing: 0.16em;
+    }
+
+    /* An eyebrow with a rule over it, for rail and band section labels. */
+    .rule-label {
+        @apply border-t border-border pt-3 text-muted-foreground;
+    }
+
+    /* Small tracked caps CTA — "READ MORE →". */
+    .micro-cta {
+        @apply inline-flex items-center gap-1.5 font-display uppercase;
+        font-size: 0.6875rem;
+        font-stretch: 90%;
+        font-weight: 650;
+        letter-spacing: 0.14em;
+    }
+
+    /* Tabular meta — dates, counts, ranks. Narrow so a column of numbers
+       stays a column. */
+    .meta-num {
+        @apply font-display;
+        font-stretch: 88%;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: 0.04em;
+    }
+
+    /* ── Bands ──────────────────────────────────────────────────────────────
+     *
+     * Full-bleed section grounds. There is no negative-margin escape hack
+     * here: public pages are laid out full-width at the root and each section
+     * owns its own `mx-auto max-w-6xl px-4`, so a band is just a background.
+     * That avoids the 100vw-versus-scrollbar overflow the hack causes.
+     */
+
+    .band {
+        @apply bg-muted/60;
+    }
+
+    .band-night {
+        @apply bg-night text-night-foreground;
+    }
+
+    .band-night a {
+        @apply text-night-foreground;
+    }
+
+    /* ── Long-form reading ──────────────────────────────────────────────────
+     *
+     * The measure is a named grid rather than a max-width, so figures can
+     * break out wider than the text without transforms or viewport maths:
+     * every child lands in `text` and images opt into `wide`.
+     *
+     * Because grid items' margins do not collapse, spacing is margin-top only
+     * — mixing my-* and mt-* here would double the gap between a paragraph
+     * and the heading after it.
+     */
+
+    /*
+     * The measure is a named grid rather than a max-width, so figures can break
+     * out wider than the text without transforms or viewport maths.
+     *
+     * Note it starts at the *left* edge rather than centring the text column in
+     * whatever space it is given. Centring put the first paragraph about 100px
+     * inboard of the article title above it, and two left edges that nearly
+     * agree read as a mistake. So the type all hangs off one axis and figures
+     * extend rightward only — into the gutter before the contents rail, which is
+     * space that would otherwise be empty anyway.
+     */
+    .public-rich-text {
+        @apply font-body text-foreground;
+        display: grid;
+        grid-template-columns:
+            [text-start] minmax(0, 42rem) [text-end]
+            minmax(0, 5rem)
+            [wide-end] minmax(0, 1fr);
+        row-gap: 0;
+        font-size: 1.125rem;
+        line-height: 1.8;
+    }
+
+    @media (width >= 40rem) {
+        .public-rich-text {
+            font-size: 1.1875rem;
+            line-height: 1.85;
+        }
+    }
+
+    .public-rich-text > * {
+        grid-column: text;
+        min-width: 0;
+    }
+
+    .public-rich-text > .article-image,
+    .public-rich-text > .code-block {
+        grid-column: text-start / wide-end;
+    }
+
+    /* Headings are the display face inside a serif column — a deliberate
+       inversion of the usual serif-display-over-sans-body, and the thing that
+       makes a section break read as a break. */
+    .public-rich-text h2 {
+        @apply mt-14 mb-4 scroll-mt-28 font-display text-balance outline-none;
+        font-size: 1.75rem;
+        font-stretch: 106%;
+        font-weight: 600;
+        line-height: 1.15;
+        letter-spacing: -0.01em;
+    }
+
+    @media (width >= 40rem) {
+        .public-rich-text h2 {
+            font-size: 2.125rem;
+        }
+    }
+
+    .public-rich-text h3 {
+        @apply mt-10 mb-3 scroll-mt-28 font-display text-balance outline-none;
+        font-size: 1.3125rem;
+        font-stretch: 100%;
+        font-weight: 600;
+        line-height: 1.3;
+    }
+
+    .public-rich-text > :first-child {
+        margin-top: 0;
+    }
+
+    .public-rich-text p {
+        @apply mt-6;
+    }
+
+    .public-rich-text ul {
+        @apply mt-6 list-disc space-y-2 pl-6;
+    }
+
+    .public-rich-text ol {
+        @apply mt-6 list-decimal space-y-2 pl-6;
+    }
+
+    .public-rich-text li::marker {
+        @apply text-brand-accent;
+    }
+
+    .public-rich-text li > p {
+        @apply mt-1;
+    }
+
+    /* Pull quote: was a rounded sand card with a 7xl quote glyph. Now a
+       hanging indent against a moon-silver rule — the quote steps out of the
+       column instead of sitting in a box inside it. */
+    .public-rich-text blockquote {
+        @apply mt-10 border-l-2 border-brand-accent/50 pl-6 font-body text-foreground italic;
+        font-size: 1.375rem;
+        font-weight: 380;
+        line-height: 1.55;
+    }
+
+    /* No negative indent: the text column now starts at the container edge, so
+       hanging the quote outboard would push it into the page gutter. */
+    @media (width >= 40rem) {
+        .public-rich-text blockquote {
+            font-size: 1.5rem;
+        }
+    }
+
+    .public-rich-text blockquote > :first-child {
+        @apply mt-0;
+    }
+
+    .public-rich-text :not(pre) > code {
+        @apply rounded-sm bg-muted px-1.5 py-0.5 font-mono text-[0.85em];
+    }
+
+    .public-rich-text a {
+        @apply text-primary underline decoration-primary/40 decoration-2 underline-offset-[5px] transition-colors;
+    }
+
+    .public-rich-text a:hover {
+        @apply decoration-primary;
+    }
+
+    /* Section break: one full moon, centred. Drawn as a background rather
+       than generated content because ::before on a void <hr> is unreliable
+       across engines. It replaced a three-dot triad — one disc says the same
+       thing and ties to the phase marks used everywhere else. */
+    .public-rich-text hr {
+        @apply mt-14 h-2 border-0 bg-transparent;
+        background-image: radial-gradient(
+            circle at center,
+            var(--brand-accent) 0 3.5px,
+            transparent 4px
+        );
+        background-repeat: no-repeat;
+        background-position: center;
+    }
+
+    /* ── Figures ────────────────────────────────────────────────────────────
+     * Square corners, no drop shadow, caption left-aligned under the image in
+     * the body italic. The figure sits in the `wide` column, so it reads as
+     * stepping out past the measure.
+     */
+
+    .article-image {
+        @apply mt-10 grid gap-2.5;
+    }
+
+    .article-image img {
+        @apply w-full rounded-sm bg-muted object-contain;
+    }
+
+    .article-image figcaption {
+        @apply font-body text-[0.9375rem] leading-6 text-muted-foreground italic;
+    }
+
+    /* ── Code ───────────────────────────────────────────────────────────── */
+
+    .code-block {
+        @apply mt-9 overflow-hidden rounded-sm border border-neutral-800 bg-neutral-950 text-sm text-neutral-100;
+    }
+
+    .code-block-toolbar {
+        @apply flex items-center justify-between gap-3 border-b border-white/10 px-3.5 py-2 font-sans text-xs text-neutral-400;
+    }
+
+    .code-block pre {
+        @apply overflow-x-auto p-4 font-mono leading-6;
+    }
+
+    .code-block code {
+        @apply bg-transparent p-0 text-inherit;
+    }
+
+    .hljs-comment,
+    .hljs-quote {
+        color: oklch(0.7 0 0);
+    }
+
+    .hljs-keyword,
+    .hljs-selector-tag,
+    .hljs-literal,
+    .hljs-type {
+        color: oklch(0.78 0.13 316);
+    }
+
+    .hljs-string,
+    .hljs-attr,
+    .hljs-template-tag,
+    .hljs-template-variable {
+        color: oklch(0.82 0.12 151);
+    }
+
+    .hljs-title,
+    .hljs-section,
+    .hljs-function .hljs-title,
+    .hljs-selector-id,
+    .hljs-selector-class {
+        color: oklch(0.82 0.12 84);
+    }
+
+    .hljs-number,
+    .hljs-symbol,
+    .hljs-variable,
+    .hljs-regexp,
+    .hljs-link {
+        color: oklch(0.78 0.13 228);
+    }
+
+    .hljs-built_in,
+    .hljs-name,
+    .hljs-meta {
+        color: oklch(0.78 0.15 32);
+    }
+
+    .hljs-addition {
+        @apply bg-emerald-950 text-emerald-200;
+    }
+
+    .hljs-deletion {
+        @apply bg-red-950 text-red-200;
+    }
+}
+
+/* ── Motion ────────────────────────────────────────────────────────────── */
+@layer components {
+    /* Positioning plus the collapsed starting state — the scale is then driven
+       by a motion spring bound to the article's scroll progress (see
+       posts/show.tsx), which overwrites `transform` on hydration.
+       Deliberately NOT Tailwind's `scale-x-0`: that compiles to the standalone
+       `scale` property, which multiplies with motion's `transform: scaleX()`
+       and would pin the bar at zero width forever. */
+    .reading-progress {
+        @apply pointer-events-none fixed inset-x-0 top-0 z-50 h-1 origin-left [transform:scaleX(0)] bg-primary;
+    }
+}
+
+/* Scroll-triggered elements are server-rendered with motion's inline
+   `opacity: 0`, which only clears once the client bundle runs. Without JS
+   nothing below the fold would ever appear, so hand them back. Print has its
+   own copy of this rule further down — that media query cannot be merged into
+   this one. */
+@media (scripting: none) {
+    [data-reveal] {
+        opacity: 1 !important;
+        transform: none !important;
+    }
+}
+
+@media print {
+    @page {
+        margin: 1.8cm;
+    }
+
+    :root,
+    .dark,
+    html.public-surface,
+    html.public-surface.dark,
+    .public-tokens,
+    .dark .public-tokens {
+        --background: white;
+        --foreground: black;
+        --muted: white;
+        --muted-foreground: oklch(0.35 0 0);
+        --border: oklch(0.75 0 0);
+        --primary: black;
+        --brand-accent: oklch(0.4 0 0);
+        /* Bands are backgrounds, not content — flatten them so an article
+           doesn't print a slab of ink across the page. */
+        --night: white;
+        --night-foreground: black;
+        --night-muted: oklch(0.35 0 0);
+        --night-accent: black;
+    }
+
+    body {
+        background: white !important;
+        color: black !important;
+        font-size: 11pt;
+    }
+
+    .site-header,
+    .site-footer,
+    .public-breadcrumbs,
+    .post-toc,
+    .post-navigation,
+    .post-tags,
+    .post-share,
+    .post-comments,
+    .related-posts,
+    .author-social-links,
+    .reading-progress,
+    [data-slot='dialog-portal'] {
+        display: none !important;
+    }
+
+    main,
+    article,
+    .public-rich-text {
+        width: auto !important;
+        max-width: none !important;
+        padding: 0 !important;
+    }
+
+    /* Collapse the reading grid — a printed page has one column, and `wide`
+       figures have nothing to break out of. */
+    .public-rich-text {
+        display: block !important;
+        font-size: 11pt;
+        line-height: 1.65;
+    }
+
+    /* Scroll-triggered elements that never entered the viewport still carry
+       motion's inline `opacity: 0`. Force them visible so a printed article
+       is never missing sections. */
+    [data-reveal] {
+        opacity: 1 !important;
+        transform: none !important;
+    }
+
+    .public-rich-text blockquote {
+        margin-left: 0 !important;
+        border-left: 3pt solid oklch(0.6 0 0);
+        padding-left: 12pt;
+    }
+
+    .public-rich-text h2,
+    .public-rich-text h3,
+    .article-image,
+    .code-block,
+    blockquote {
+        break-inside: avoid;
+    }
+
+    .code-block {
+        border-color: oklch(0.65 0 0);
+        background: oklch(0.97 0 0) !important;
+        color: black !important;
+        white-space: pre-wrap;
+    }
+
+    .code-block-toolbar button,
+    .article-image button span {
+        display: none !important;
+    }
+
+    .article-image button {
+        pointer-events: none;
+    }
+
+    a {
+        color: black !important;
+        text-decoration-color: oklch(0.4 0 0) !important;
+    }
+}

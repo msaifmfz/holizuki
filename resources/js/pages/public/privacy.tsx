@@ -8,20 +8,13 @@ export default function Privacy() {
         <>
             <Head title="Privacy Policy" />
             <div className="mx-auto w-full max-w-3xl px-4 py-12 sm:py-16">
-                <header className="mb-10 grid gap-4">
-                    <p className="flex items-center gap-2 text-xs font-medium tracking-widest text-muted-foreground uppercase">
-                        <span className="moon-dot" aria-hidden />
-                        Legal
-                    </p>
-                    <h1 className="font-display text-4xl font-semibold tracking-tight sm:text-5xl">
-                        Privacy Policy
-                    </h1>
+                <header className="mb-10 grid gap-5 border-t border-border pt-5">
+                    <p className="eyebrow text-brand-accent">Legal</p>
+                    <h1 className="display-lg">Privacy Policy</h1>
                 </header>
-                <div className="grid gap-8 text-base leading-7 text-foreground/90">
+                <div className="grid gap-8 font-body text-lg leading-relaxed text-foreground/90">
                     <section className="grid gap-3">
-                        <h2 className="font-display text-2xl font-semibold">
-                            What this site collects
-                        </h2>
+                        <h2 className="display-md">What this site collects</h2>
                         <p>
                             Reading this blog requires no account. If you create
                             a Reader account, we store your fixed public display
@@ -30,7 +23,7 @@ export default function Privacy() {
                         </p>
                     </section>
                     <section className="grid gap-3">
-                        <h2 className="font-display text-2xl font-semibold">
+                        <h2 className="display-md">
                             Optional Google Analytics
                         </h2>
                         <p>
@@ -62,9 +55,7 @@ export default function Privacy() {
                         </button>
                     </section>
                     <section className="grid gap-3">
-                        <h2 className="font-display text-2xl font-semibold">
-                            The contact form
-                        </h2>
+                        <h2 className="display-md">The contact form</h2>
                         <p>
                             If you use the contact form, the name, email
                             address, and message you submit are stored so we can
@@ -75,9 +66,7 @@ export default function Privacy() {
                         </p>
                     </section>
                     <section className="grid gap-3">
-                        <h2 className="font-display text-2xl font-semibold">
-                            Comments
-                        </h2>
+                        <h2 className="display-md">Comments</h2>
                         <p>
                             Verified Readers may submit plain-text comments.
                             Your chosen display name and approved comment are
@@ -89,9 +78,7 @@ export default function Privacy() {
                         </p>
                     </section>
                     <section className="grid gap-3">
-                        <h2 className="font-display text-2xl font-semibold">
-                            Newsletter subscriptions
-                        </h2>
+                        <h2 className="display-md">Newsletter subscriptions</h2>
                         <p>
                             Newsletter email addresses are encrypted at rest and
                             paired with a normalized one-way HMAC for exact
@@ -103,7 +90,7 @@ export default function Privacy() {
                         </p>
                     </section>
                     <section className="grid gap-3">
-                        <h2 className="font-display text-2xl font-semibold">
+                        <h2 className="display-md">
                             Anonymous post popularity
                         </h2>
                         <p>
@@ -117,9 +104,7 @@ export default function Privacy() {
                         </p>
                     </section>
                     <section className="grid gap-3">
-                        <h2 className="font-display text-2xl font-semibold">
-                            Cookies
-                        </h2>
+                        <h2 className="display-md">Cookies</h2>
                         <p>
                             The site sets a small number of first-party cookies:
                             a session cookie required for the site to function,
@@ -130,9 +115,7 @@ export default function Privacy() {
                         </p>
                     </section>
                     <section className="grid gap-3">
-                        <h2 className="font-display text-2xl font-semibold">
-                            Questions
-                        </h2>
+                        <h2 className="display-md">Questions</h2>
                         <p>
                             For any privacy question or request — including
                             asking for a contact submission to be deleted —

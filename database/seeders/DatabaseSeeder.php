@@ -19,13 +19,22 @@ class DatabaseSeeder extends Seeder
     {
         // User::factory(10)->create();
 
-        User::factory()->create([
+        // Idempotent so the curated PostSeeder content can be re-seeded over an
+        // existing local database. The profile fields are refreshed on every
+        // run — the password and other generated attributes are not, so an
+        // existing local login keeps working.
+        $user = User::query()->firstOrNew(['email' => 'test@example.com']);
+
+        if (! $user->exists) {
+            $user->forceFill(User::factory()->raw(['email' => 'test@example.com']));
+        }
+
+        $user->forceFill([
             'name' => 'Test User',
-            'email' => 'test@example.com',
             'author_slug' => 'test-user',
-            'bio' => 'Writes about building and shipping software.',
+            'bio' => 'Travels slowly, books the shoulder season, and pays for every room reviewed here.',
             'social_links' => ['website' => 'https://example.com'],
-        ]);
+        ])->save();
 
         $this->call(PostSeeder::class);
     }

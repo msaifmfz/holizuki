@@ -1,0 +1,121 @@
+/* Shared theme contract.
+ *
+ * Every token here resolves through a surface-level variable so the admin
+ * console and the public blog can look nothing alike while sharing one
+ * bundle and one set of shadcn primitives. Concrete values live in
+ * admin.css (`:root`) and public.css (`html.public-surface`).
+ *
+ * `inline` is load-bearing, not cosmetic. Without it Tailwind emits
+ * `--color-background: var(--background)` into `:root` and compiles the utility
+ * to `var(--color-background)` — so the indirection is resolved once, at `:root`,
+ * against whatever `--background` is there. Re-declaring `--background` further
+ * down the tree then has no effect, because the intermediate was already
+ * computed. That silently broke `.public-tokens`: the admin post preview asked
+ * for the reader palette and got the console's white and its system serif.
+ * `@theme inline` drops the intermediate so each utility reads the surface
+ * variable at the point of use, which is what makes a scoped token set work at
+ * all. `html.public-surface` was unaffected either way, since that class sits on
+ * the same element as `:root`.
+ */
+
+@theme inline {
+    --font-sans:
+        'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
+        'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
+        'Noto Color Emoji';
+
+    /* Admin keeps a zero-payload system serif; the public blog swaps in
+       Archivo. See --display-family in admin.css / public.css. */
+    --font-display: var(--display-family);
+
+    /* Long-form reading face. Admin points this at the sans stack (its prose is
+       editor chrome, not an article); the public blog swaps in Newsreader. See
+       --body-family in admin.css / public.css. */
+    --font-body: var(--body-family);
+
+    /* Derived from --radius so a surface can loosen every corner at once.
+       The offsets are chosen so the admin's 0.625rem base still produces
+       Tailwind's stock 12/16/24px for xl/2xl/3xl. */
+    --radius-sm: calc(var(--radius) - 4px);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 2px);
+    --radius-2xl: calc(var(--radius) + 6px);
+    --radius-3xl: calc(var(--radius) + 14px);
+
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+
+    /* Distinct from shadcn's --accent, which is a hover *surface* token.
+       This is the real second brand colour (moon silver on the public blog).
+       Used as ink and rules only, so it has no -foreground pair; add one
+       alongside the surface values if it ever becomes a background. */
+    --color-brand-accent: var(--brand-accent);
+
+    /* Full-bleed section bands. Deliberately not --card or --muted: those track
+       the surface and invert in dark mode, whereas a band stays night in both.
+       Because the ground is constant, the ink on it has to be too — the light
+       theme's --primary is a dark amber that scores 2.9:1 on night, so the band
+       carries its own accent and muted pair rather than reusing the surface's.
+       Admin defines benign fallbacks so `bg-night` never renders undefined. */
+    --color-night: var(--night);
+    --color-night-foreground: var(--night-foreground);
+    --color-night-muted: var(--night-muted);
+    --color-night-accent: var(--night-accent);
+
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+
+    /* Status accents. Each is a text-weight colour that clears 4.5:1 on its
+       surface, so banners can be built as text-success / bg-success/10 /
+       border-success/30 instead of hardcoding palette shades per theme. */
+    --color-success: var(--success);
+    --color-warning: var(--warning);
+
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+
+    --color-chart-1: var(--chart-1);
+    --color-chart-2: var(--chart-2);
+    --color-chart-3: var(--chart-3);
+    --color-chart-4: var(--chart-4);
+    --color-chart-5: var(--chart-5);
+
+    --color-sidebar: var(--sidebar);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+
+    body {
+        @apply bg-background text-foreground;
+    }
+}

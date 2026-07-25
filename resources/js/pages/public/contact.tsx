@@ -11,18 +11,13 @@ export default function Contact() {
         <>
             <Head title="Contact" />
             <div className="mx-auto w-full max-w-3xl px-4 py-12 sm:py-16">
-                <header className="mb-10 grid gap-4">
-                    <p className="flex items-center gap-2 text-xs font-medium tracking-widest text-muted-foreground uppercase">
-                        <span className="moon-dot" aria-hidden />
-                        Contact
-                    </p>
-                    <h1 className="font-display text-4xl font-semibold tracking-tight sm:text-5xl">
-                        Say hello
-                    </h1>
-                    <p className="max-w-xl text-lg leading-8 text-muted-foreground">
-                        Questions, corrections, or ideas for a post — drop a
-                        message and it lands straight in the writing desk's
-                        inbox.
+                <header className="mb-10 grid gap-5 border-t border-border pt-5">
+                    <p className="eyebrow text-brand-accent">Contact</p>
+                    <h1 className="display-lg">Say hello</h1>
+                    <p className="max-w-xl text-lg leading-relaxed text-muted-foreground">
+                        Been somewhere we should write about? Spotted a hotel
+                        that has slipped since we stayed? Send it over — it
+                        lands straight in our inbox.
                     </p>
                 </header>
 

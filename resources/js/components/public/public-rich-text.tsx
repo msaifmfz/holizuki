@@ -268,9 +268,12 @@ export function ExpandableImage({
         <Dialog>
             <figure className="article-image">
                 <DialogTrigger asChild>
+                    {/* `rounded-sm` here to match `.article-image img`; the two
+                        were `rounded-xl` and `rounded-3xl` respectively, so the
+                        trigger clipped a different corner than the image drew. */}
                     <button
                         type="button"
-                        className="group relative block w-full cursor-zoom-in overflow-hidden rounded-xl focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
+                        className="group relative block w-full cursor-zoom-in overflow-hidden rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
                         aria-label={
                             alt === '' ? 'Expand image' : `Expand image: ${alt}`
                         }
@@ -283,7 +286,7 @@ export function ExpandableImage({
                             loading="lazy"
                             className="h-auto w-full"
                         />
-                        <span className="absolute right-3 bottom-3 rounded-full bg-black/65 p-2 text-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                        <span className="absolute right-3 bottom-3 bg-black/70 p-2 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
                             <Expand className="size-4" aria-hidden />
                         </span>
                     </button>

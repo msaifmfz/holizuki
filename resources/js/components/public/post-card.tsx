@@ -1,54 +1,50 @@
 import { Link } from '@inertiajs/react';
-import AuthorByline from '@/components/public/author-byline';
-import { show as categoryShow } from '@/routes/public/categories';
+
+import Dateline from '@/components/public/dateline';
+import { RevealItem } from '@/components/public/motion';
+import PostImage from '@/components/public/post-image';
+import { cn } from '@/lib/utils';
 import { show as postShow } from '@/routes/public/posts';
 import type { PublicPostCard } from '@/types';
 
+/**
+ * The vertical post card — image over title, used where a change of rhythm is
+ * wanted: the pair under the home hero and the three-up at the end of an
+ * article. Listing pages use `PostList` rows instead.
+ *
+ * No card chrome. The old version was a `rounded-3xl border` box that lifted 6px
+ * on hover; both read as an app surface rather than as a page, and with the
+ * radius now at 2px a bordered box would just look like a bordered box. What is
+ * left is the image, a hairline, and type.
+ */
 export default function PostCard({
     post,
     contentSource,
     contentLocation,
+    className,
 }: {
     post: PublicPostCard;
     contentSource?: string;
     contentLocation?: string;
+    className?: string;
 }) {
     return (
-        <article className="group relative flex flex-col gap-3">
-            {post.featured_image_url ? (
-                <div className="overflow-hidden rounded-xl border">
-                    <img
-                        src={post.featured_image_url}
-                        alt={post.featured_image_alt ?? ''}
-                        loading="lazy"
-                        className="aspect-video w-full object-cover transition-transform duration-300 motion-safe:group-hover:scale-[1.03]"
-                    />
-                </div>
-            ) : (
-                <div
-                    aria-hidden
-                    className="flex aspect-video w-full items-center justify-center rounded-xl border bg-muted"
-                >
-                    <span className="moon-dot opacity-40" />
-                </div>
-            )}
+        <RevealItem className={cn('group relative flex flex-col', className)}>
+            <PostImage post={post} phaseSize={44} />
 
             {post.category && (
-                <Link
-                    href={categoryShow(post.category.slug)}
-                    className="relative z-10 w-fit text-xs font-medium tracking-wide text-muted-foreground uppercase transition-colors hover:text-foreground"
-                >
+                <p className="eyebrow mt-4 text-brand-accent">
                     {post.category.name}
-                </Link>
+                </p>
             )}
 
-            <h3 className="font-display text-xl leading-snug font-semibold tracking-tight text-balance">
+            <h3 className="display-md mt-2.5">
                 <Link
                     href={postShow(post.slug)}
                     data-content-key={`post:${post.id}`}
                     data-content-source={contentSource}
                     data-content-location={contentLocation}
-                    className="group-hover:underline group-hover:underline-offset-4 after:absolute after:inset-0"
+                    className="decoration-primary/50 underline-offset-[6px] transition-colors group-hover:underline after:absolute after:inset-0"
                     prefetch
                 >
                     {post.title}
@@ -56,16 +52,16 @@ export default function PostCard({
             </h3>
 
             {post.excerpt && (
-                <p className="line-clamp-2 text-sm leading-6 text-muted-foreground">
+                <p className="mt-3 line-clamp-2 font-body leading-relaxed text-muted-foreground">
                     {post.excerpt}
                 </p>
             )}
 
-            <AuthorByline
-                author={post.author}
+            <Dateline
                 date={post.published_at}
                 readingTime={post.reading_time_minutes}
+                className="mt-4"
             />
-        </article>
+        </RevealItem>
     );
 }

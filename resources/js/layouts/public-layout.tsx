@@ -1,12 +1,12 @@
 import { Link, usePage } from '@inertiajs/react';
-import { Menu, Rss, Search } from 'lucide-react';
-import { useState } from 'react';
+import { Home, Menu, Rss, Search } from 'lucide-react';
+import { MotionConfig } from 'motion/react';
+import { useEffect, useRef, useState } from 'react';
 import type { PropsWithChildren } from 'react';
+
 import { edit as readerAccount } from '@/actions/App/Http/Public/Controllers/ReaderAccountController';
 import { openPrivacyManager } from '@/analytics/consent';
-import AppLogoIcon from '@/components/app-logo-icon';
 import AppearanceToggle from '@/components/appearance-toggle';
-import { Breadcrumbs } from '@/components/breadcrumbs';
 import AnalyticsConsentManager from '@/components/public/analytics-consent';
 import NewsletterForm from '@/components/public/newsletter-form';
 import PublicAnalytics from '@/components/public/public-analytics';
@@ -19,6 +19,7 @@ import {
     SheetTrigger,
 } from '@/components/ui/sheet';
 import { useCurrentUrl } from '@/hooks/use-current-url';
+import { useSurface } from '@/hooks/use-surface';
 import { cn } from '@/lib/utils';
 import { dashboard, home, login, logout } from '@/routes';
 import {
@@ -41,10 +42,33 @@ const navLinks = [
     { title: 'About', href: about, descendants: false },
 ];
 
+const footerLinks = [
+    { title: 'All topics', href: topics },
+    { title: 'Archive', href: archive },
+    { title: 'Search', href: searchRoute },
+    { title: 'About', href: about },
+    { title: 'Contact', href: contact },
+    { title: 'Privacy Policy', href: privacy },
+    { title: 'Terms of Use', href: terms },
+];
+
+/**
+ * The public shell.
+ *
+ * The header is two bands rather than one bar: a thin utility row that stays put,
+ * and a masthead beneath it that scrolls away. tg-mari does this — nav on top,
+ * then the wordmark centred in its own band — and it lets the wordmark be a
+ * piece of type rather than a logo squeezed into a 64px strip. Once the masthead
+ * has gone the utility row picks the wordmark up inline, so the site name is
+ * never off screen.
+ */
 export default function PublicLayout({ children }: PropsWithChildren) {
     const { auth, footerCategories, name } = usePage().props;
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
     const { isCurrentUrl, isCurrentOrParentUrl } = useCurrentUrl();
+    const { sentinelRef, passed: mastheadPassed } = useScrolledPastMasthead();
+
+    useSurface('public');
 
     const isActive = (link: (typeof navLinks)[number]) =>
         link.title === 'Topics'
@@ -57,329 +81,346 @@ export default function PublicLayout({ children }: PropsWithChildren) {
               ? isCurrentOrParentUrl(link.href())
               : isCurrentUrl(link.href());
 
+    const accountLabel =
+        auth.user?.role === 'administrator'
+            ? 'Dashboard'
+            : auth.user
+              ? 'Sign out'
+              : 'Sign in';
+    const accountHref =
+        auth.user?.role === 'administrator'
+            ? dashboard()
+            : auth.user
+              ? logout()
+              : login();
+
     return (
-        <div className="flex min-h-screen flex-col">
-            <PublicAnalytics />
-            <AnalyticsConsentManager />
-            <a
-                href="#main-content"
-                className="fixed top-2 left-2 z-[100] -translate-y-20 rounded-md bg-background px-4 py-2 text-sm font-medium shadow-lg ring-1 ring-border transition-transform focus:translate-y-0"
-            >
-                Skip to content
-            </a>
-            <header className="site-header sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur">
-                <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-3 px-4">
-                    <Link
-                        href={home()}
-                        className="flex items-center gap-2"
-                        aria-label={`${name} home`}
-                        prefetch
-                    >
-                        <span className="flex aspect-square size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-                            <AppLogoIcon className="size-5 fill-current text-white dark:text-black" />
-                        </span>
-                        <span className="font-display text-lg font-semibold tracking-tight">
-                            {name}
-                        </span>
-                    </Link>
+        // `reducedMotion="user"` makes every animation on the public site
+        // honour the OS setting: transforms are dropped, opacity is kept.
+        <MotionConfig reducedMotion="user">
+            <div className="flex min-h-screen flex-col">
+                <PublicAnalytics />
+                <AnalyticsConsentManager />
+                <a
+                    href="#main-content"
+                    className="fixed top-2 left-2 z-[100] -translate-y-20 bg-background px-4 py-2 text-sm font-medium ring-1 ring-border transition-transform focus:translate-y-0"
+                >
+                    Skip to content
+                </a>
 
-                    <nav
-                        className="hidden items-center gap-1 md:flex"
-                        aria-label="Main"
-                    >
-                        {navLinks.map((link) => (
-                            <Button
-                                key={link.title}
-                                asChild
-                                variant={isActive(link) ? 'secondary' : 'ghost'}
-                                size="sm"
+                {/* Class name is load-bearing: print CSS hides it by name. */}
+                <header className="site-header">
+                    <div className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur">
+                        <div className="mx-auto flex h-11 w-full max-w-6xl items-center justify-between gap-3 px-4">
+                            <nav
+                                className="hidden items-center md:flex"
+                                aria-label="Main"
                             >
-                                <Link
-                                    href={link.href()}
-                                    prefetch
-                                    aria-current={
-                                        isActive(link) ? 'page' : undefined
-                                    }
-                                >
-                                    {link.title}
-                                </Link>
-                            </Button>
-                        ))}
-                    </nav>
+                                {navLinks.map((link) => (
+                                    <Link
+                                        key={link.title}
+                                        href={link.href()}
+                                        prefetch
+                                        aria-current={
+                                            isActive(link) ? 'page' : undefined
+                                        }
+                                        className={cn(
+                                            'eyebrow border-b-2 border-transparent px-3 py-3 transition-colors hover:text-foreground',
+                                            isActive(link)
+                                                ? 'border-primary text-foreground'
+                                                : 'text-muted-foreground',
+                                        )}
+                                    >
+                                        {link.title}
+                                    </Link>
+                                ))}
+                            </nav>
 
-                    <div className="flex items-center gap-1">
-                        <Button asChild variant="ghost" size="icon">
+                            {/* Takes the wordmark's place once the masthead has
+                                scrolled off. Hidden rather than unmounted so
+                                the transition has something to animate. */}
                             <Link
-                                href={searchRoute()}
-                                aria-label="Search posts"
+                                href={home()}
                                 prefetch
+                                aria-hidden={!mastheadPassed}
+                                tabIndex={-1}
+                                className={cn(
+                                    'absolute left-1/2 -translate-x-1/2 font-display text-sm [letter-spacing:0.2em] uppercase [font-stretch:112%] transition-opacity duration-300',
+                                    mastheadPassed
+                                        ? 'opacity-100'
+                                        : 'pointer-events-none opacity-0',
+                                )}
                             >
-                                <Search />
+                                {name}
                             </Link>
-                        </Button>
-                        <AppearanceToggle />
-                        {auth.user?.role === 'reader' && (
-                            <Button
-                                asChild
-                                variant="ghost"
-                                size="sm"
-                                className="hidden sm:inline-flex"
-                            >
-                                <Link href={readerAccount()} prefetch>
-                                    Account
-                                </Link>
-                            </Button>
-                        )}
-                        <Button
-                            asChild
-                            variant="outline"
-                            size="sm"
-                            className="hidden sm:inline-flex"
-                        >
-                            <Link
-                                href={
-                                    auth.user?.role === 'administrator'
-                                        ? dashboard()
-                                        : auth.user
-                                          ? logout()
-                                          : login()
-                                }
-                                method={
-                                    auth.user?.role === 'reader'
-                                        ? 'post'
-                                        : 'get'
-                                }
-                                as={
-                                    auth.user?.role === 'reader'
-                                        ? 'button'
-                                        : 'a'
-                                }
-                            >
-                                {auth.user?.role === 'administrator'
-                                    ? 'Dashboard'
-                                    : auth.user
-                                      ? 'Sign out'
-                                      : 'Sign in'}
-                            </Link>
-                        </Button>
 
-                        <Sheet
-                            open={mobileNavOpen}
-                            onOpenChange={setMobileNavOpen}
-                        >
-                            <SheetTrigger asChild>
+                            <div className="ml-auto flex items-center gap-1">
                                 <Button
+                                    asChild
                                     variant="ghost"
                                     size="icon"
-                                    className="md:hidden"
-                                    aria-label="Open menu"
+                                    className="size-8"
                                 >
-                                    <Menu />
-                                </Button>
-                            </SheetTrigger>
-                            <SheetContent side="right" className="w-64">
-                                <SheetHeader>
-                                    <SheetTitle className="font-display">
-                                        {name}
-                                    </SheetTitle>
-                                </SheetHeader>
-                                <nav
-                                    className="grid gap-1 px-4"
-                                    aria-label="Mobile"
-                                >
-                                    {navLinks.map((link) => (
-                                        <Button
-                                            key={link.title}
-                                            asChild
-                                            variant={
-                                                isActive(link)
-                                                    ? 'secondary'
-                                                    : 'ghost'
-                                            }
-                                            className="justify-start"
-                                            onClick={() =>
-                                                setMobileNavOpen(false)
-                                            }
-                                        >
-                                            <Link
-                                                href={link.href()}
-                                                aria-current={
-                                                    isActive(link)
-                                                        ? 'page'
-                                                        : undefined
-                                                }
-                                            >
-                                                {link.title}
-                                            </Link>
-                                        </Button>
-                                    ))}
-                                    {auth.user?.role === 'reader' && (
-                                        <Button
-                                            asChild
-                                            variant="ghost"
-                                            className="justify-start"
-                                            onClick={() =>
-                                                setMobileNavOpen(false)
-                                            }
-                                        >
-                                            <Link href={readerAccount()}>
-                                                Account
-                                            </Link>
-                                        </Button>
-                                    )}
-                                    <Button
-                                        asChild
-                                        variant="outline"
-                                        className="mt-2 justify-start"
-                                        onClick={() => setMobileNavOpen(false)}
+                                    <Link
+                                        href={searchRoute()}
+                                        aria-label="Search posts"
+                                        prefetch
                                     >
-                                        <Link
-                                            href={
-                                                auth.user?.role ===
-                                                'administrator'
-                                                    ? dashboard()
-                                                    : auth.user
-                                                      ? logout()
-                                                      : login()
-                                            }
-                                            method={
-                                                auth.user?.role === 'reader'
-                                                    ? 'post'
-                                                    : 'get'
-                                            }
-                                            as={
-                                                auth.user?.role === 'reader'
-                                                    ? 'button'
-                                                    : 'a'
-                                            }
-                                        >
-                                            {auth.user?.role === 'administrator'
-                                                ? 'Dashboard'
-                                                : auth.user
-                                                  ? 'Sign out'
-                                                  : 'Sign in'}
-                                        </Link>
-                                    </Button>
-                                </nav>
-                            </SheetContent>
-                        </Sheet>
-                    </div>
-                </div>
-            </header>
-
-            <main id="main-content" tabIndex={-1} className="flex-1">
-                <PublicBreadcrumbTrail />
-                {children}
-            </main>
-
-            <footer className="site-footer mt-16 border-t">
-                <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-12 md:grid-cols-2 lg:grid-cols-4">
-                    <div className="grid content-start gap-3">
-                        <div className="flex items-center gap-2">
-                            <span className="flex aspect-square size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-                                <AppLogoIcon className="size-4 fill-current text-white dark:text-black" />
-                            </span>
-                            <span className="font-display text-lg font-semibold">
-                                {name}
-                            </span>
-                        </div>
-                        <p className="max-w-xs text-sm text-muted-foreground">
-                            Writing on software, product, and the craft of
-                            building for the web.
-                        </p>
-                    </div>
-
-                    {footerCategories.length > 0 && (
-                        <nav
-                            className="grid content-start gap-2"
-                            aria-label="Topics"
-                        >
-                            <h2 className="text-sm font-semibold">Topics</h2>
-                            {footerCategories.map((category) => (
+                                        <Search />
+                                    </Link>
+                                </Button>
+                                <AppearanceToggle />
+                                {auth.user?.role === 'reader' && (
+                                    <Link
+                                        href={readerAccount()}
+                                        prefetch
+                                        className="eyebrow hidden px-3 text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
+                                    >
+                                        Account
+                                    </Link>
+                                )}
                                 <Link
-                                    key={category.slug}
-                                    href={categoryShow(category.slug)}
-                                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                                    href={accountHref}
+                                    method={
+                                        auth.user?.role === 'reader'
+                                            ? 'post'
+                                            : 'get'
+                                    }
+                                    as={
+                                        auth.user?.role === 'reader'
+                                            ? 'button'
+                                            : 'a'
+                                    }
+                                    className="eyebrow hidden px-3 text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
                                 >
-                                    {category.name}
+                                    {accountLabel}
                                 </Link>
-                            ))}
-                        </nav>
-                    )}
 
-                    <nav className="grid content-start gap-2" aria-label="Site">
-                        <h2 className="text-sm font-semibold">Explore</h2>
-                        <Link
-                            href={topics()}
-                            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                        >
-                            All topics
-                        </Link>
-                        <Link
-                            href={archive()}
-                            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                        >
-                            Archive
-                        </Link>
-                        <Link
-                            href={searchRoute()}
-                            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                        >
-                            Search
-                        </Link>
-                        <Link
-                            href={about()}
-                            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                        >
-                            About
-                        </Link>
-                        <Link
-                            href={contact()}
-                            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                        >
-                            Contact
-                        </Link>
-                        <Link
-                            href={privacy()}
-                            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                        >
-                            Privacy Policy
-                        </Link>
-                        <Link
-                            href={terms()}
-                            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                        >
-                            Terms of Use
-                        </Link>
-                    </nav>
-
-                    <NewsletterForm location="footer" />
-                </div>
-                <div className="border-t border-border/60">
-                    <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-4 text-xs text-muted-foreground">
-                        <p>
-                            © {new Date().getFullYear()} {name}. All rights
-                            reserved.
-                        </p>
-                        <a
-                            href={feed.url()}
-                            className="flex items-center gap-1 transition-colors hover:text-foreground"
-                        >
-                            <Rss className="size-3.5" />
-                            RSS
-                        </a>
-                        <button
-                            type="button"
-                            onClick={openPrivacyManager}
-                            className="underline-offset-4 transition-colors hover:text-foreground hover:underline"
-                        >
-                            Privacy choices
-                        </button>
+                                <Sheet
+                                    open={mobileNavOpen}
+                                    onOpenChange={setMobileNavOpen}
+                                >
+                                    <SheetTrigger asChild>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="size-8 md:hidden"
+                                            aria-label="Open menu"
+                                        >
+                                            <Menu />
+                                        </Button>
+                                    </SheetTrigger>
+                                    <SheetContent side="right" className="w-72">
+                                        <SheetHeader>
+                                            <SheetTitle className="font-display [letter-spacing:0.18em] uppercase [font-stretch:112%]">
+                                                {name}
+                                            </SheetTitle>
+                                        </SheetHeader>
+                                        <nav
+                                            className="grid px-4"
+                                            aria-label="Mobile"
+                                        >
+                                            {navLinks.map((link) => (
+                                                <Link
+                                                    key={link.title}
+                                                    href={link.href()}
+                                                    aria-current={
+                                                        isActive(link)
+                                                            ? 'page'
+                                                            : undefined
+                                                    }
+                                                    onClick={() =>
+                                                        setMobileNavOpen(false)
+                                                    }
+                                                    className={cn(
+                                                        'eyebrow border-b border-border py-4',
+                                                        isActive(link)
+                                                            ? 'text-primary'
+                                                            : 'text-muted-foreground',
+                                                    )}
+                                                >
+                                                    {link.title}
+                                                </Link>
+                                            ))}
+                                            {auth.user?.role === 'reader' && (
+                                                <Link
+                                                    href={readerAccount()}
+                                                    onClick={() =>
+                                                        setMobileNavOpen(false)
+                                                    }
+                                                    className="eyebrow border-b border-border py-4 text-muted-foreground"
+                                                >
+                                                    Account
+                                                </Link>
+                                            )}
+                                            <Link
+                                                href={accountHref}
+                                                method={
+                                                    auth.user?.role === 'reader'
+                                                        ? 'post'
+                                                        : 'get'
+                                                }
+                                                as={
+                                                    auth.user?.role === 'reader'
+                                                        ? 'button'
+                                                        : 'a'
+                                                }
+                                                onClick={() =>
+                                                    setMobileNavOpen(false)
+                                                }
+                                                className="eyebrow py-4 text-left text-primary"
+                                            >
+                                                {accountLabel}
+                                            </Link>
+                                        </nav>
+                                    </SheetContent>
+                                </Sheet>
+                            </div>
+                        </div>
                     </div>
-                </div>
-            </footer>
-        </div>
+
+                    <div className="mx-auto grid w-full max-w-6xl justify-items-center gap-2.5 px-4 py-9 sm:py-12">
+                        <Link
+                            href={home()}
+                            aria-label={`${name} home`}
+                            prefetch
+                            className="text-center font-display text-[clamp(2rem,7vw,4rem)] leading-none [letter-spacing:0.06em] uppercase [font-stretch:118%]"
+                        >
+                            {name}
+                        </Link>
+                        <p className="eyebrow text-center text-brand-accent">
+                            Fewer places, longer stays
+                        </p>
+                    </div>
+                </header>
+
+                {/* The trigger for the inline wordmark. Zero-height and inert —
+                    it only exists to be observed. */}
+                <div ref={sentinelRef} aria-hidden />
+
+                <main id="main-content" tabIndex={-1} className="flex-1">
+                    <PublicBreadcrumbTrail />
+                    {children}
+                </main>
+
+                {/* Only a small margin: every page section already carries its
+                    own bottom padding, and mt-24 on top of that left a void of
+                    paper between the last row and the band. */}
+                <footer className="site-footer band-night mt-6">
+                    <div className="mx-auto w-full max-w-6xl px-4">
+                        {/*
+                         * An oversized ghost wordmark used to sit here, set in
+                         * `text-night-foreground/12` as a watermark. It is gone
+                         * because it could not be both things at once: axe scores
+                         * it 1.37:1 against the band, and it needs 40% opacity to
+                         * clear the 3:1 large-text threshold — at which point it
+                         * stops being a texture and starts competing with the
+                         * links beside it. Decorative text that cannot pass is
+                         * just decoration to cut. The site name is already live
+                         * text in the masthead and in the copyright line below.
+                         */}
+                        <div className="grid gap-12 py-14 md:grid-cols-2 lg:grid-cols-[1fr_1fr_1.6fr]">
+                            {footerCategories.length > 0 && (
+                                <nav
+                                    className="grid content-start gap-3"
+                                    aria-label="Topics"
+                                >
+                                    <h2 className="eyebrow text-night-accent">
+                                        Where we&rsquo;ve been
+                                    </h2>
+                                    {footerCategories.map((category) => (
+                                        <Link
+                                            key={category.slug}
+                                            href={categoryShow(category.slug)}
+                                            className="font-display text-sm text-night-muted transition-colors hover:text-night-foreground"
+                                        >
+                                            {category.name}
+                                        </Link>
+                                    ))}
+                                </nav>
+                            )}
+
+                            <nav
+                                className="grid content-start gap-3"
+                                aria-label="Site"
+                            >
+                                <h2 className="eyebrow text-night-accent">
+                                    Explore
+                                </h2>
+                                {footerLinks.map((link) => (
+                                    <Link
+                                        key={link.title}
+                                        href={link.href()}
+                                        className="font-display text-sm text-night-muted transition-colors hover:text-night-foreground"
+                                    >
+                                        {link.title}
+                                    </Link>
+                                ))}
+                            </nav>
+
+                            <NewsletterForm location="footer" tone="night" />
+                        </div>
+                    </div>
+
+                    <div className="border-t border-night-muted/25">
+                        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-5 text-night-muted">
+                            <p className="eyebrow">
+                                © {new Date().getFullYear()} {name}
+                            </p>
+                            <a
+                                href={feed.url()}
+                                className="eyebrow flex items-center gap-1.5 transition-colors hover:text-night-foreground"
+                            >
+                                <Rss className="size-3" />
+                                RSS
+                            </a>
+                            <button
+                                type="button"
+                                onClick={openPrivacyManager}
+                                className="eyebrow underline-offset-4 transition-colors hover:text-night-foreground hover:underline"
+                            >
+                                Privacy choices
+                            </button>
+                        </div>
+                    </div>
+                </footer>
+            </div>
+        </MotionConfig>
     );
+}
+
+/**
+ * Tracks whether the masthead has scrolled out from under the sticky utility
+ * row, so the row can pick the wordmark up inline.
+ *
+ * An IntersectionObserver on a zero-height sentinel rather than a scroll
+ * listener: nothing runs on the main thread while the reader is scrolling, and
+ * there is no layout read per frame. Starts `false`, which is also what the
+ * server renders — the masthead is on screen before anyone scrolls.
+ */
+function useScrolledPastMasthead() {
+    const sentinelRef = useRef<HTMLDivElement | null>(null);
+    const [passed, setPassed] = useState(false);
+
+    useEffect(() => {
+        const node = sentinelRef.current;
+
+        if (!node) {
+            return;
+        }
+
+        const observer = new IntersectionObserver(
+            ([entry]) => setPassed(!entry.isIntersecting),
+            // The utility row is 44px tall; fire as the sentinel slides under it.
+            { rootMargin: '-44px 0px 0px 0px' },
+        );
+
+        observer.observe(node);
+
+        return () => observer.disconnect();
+    }, []);
+
+    return { sentinelRef, passed };
 }
 
 function PublicBreadcrumbTrail() {
@@ -408,10 +449,7 @@ function PublicBreadcrumbTrail() {
         items.push({ title: category?.name ?? 'Category', href: page.url });
     } else if (pathname.startsWith('/tags/')) {
         items.push({ title: 'Topics', href: topics() });
-        items.push({
-            title: tag?.name ? `#${tag.name}` : 'Tag',
-            href: page.url,
-        });
+        items.push({ title: tag?.name ?? 'Tag', href: page.url });
     } else if (pathname.startsWith('/authors/')) {
         items.push({ title: author?.name ?? 'Author', href: page.url });
     } else if (pathname.startsWith('/posts/')) {
@@ -453,14 +491,52 @@ function PublicBreadcrumbTrail() {
         });
     }
 
+    const last = items.length - 1;
+
+    /*
+     * Segmented rather than the shared `Breadcrumbs` component: cells divided by
+     * hairlines, lifted from tg-mari. The shared component is still admin's, so
+     * the two portals no longer have to agree on what a breadcrumb looks like.
+     * The class name is load-bearing — print CSS hides it.
+     */
     return (
-        <div
+        <nav
+            aria-label="Breadcrumb"
             className={cn(
-                'public-breadcrumbs mx-auto w-full max-w-6xl px-4 pt-5',
+                'public-breadcrumbs border-y border-border',
                 pathname === '/error' && 'hidden',
             )}
         >
-            <Breadcrumbs breadcrumbs={items} />
-        </div>
+            <ol className="mx-auto flex w-full max-w-6xl items-stretch overflow-x-auto px-4">
+                {items.map((item, index) => (
+                    <li
+                        key={`${item.title}-${index}`}
+                        // `shrink-0` + nowrap: on a narrow screen the strip
+                        // should scroll sideways, not let a two-word category
+                        // wrap and make its cell twice as tall as the others.
+                        className="flex shrink-0 items-center border-r border-border whitespace-nowrap first:border-l"
+                    >
+                        {index === last ? (
+                            <span
+                                aria-current="page"
+                                className="eyebrow max-w-[18rem] truncate px-3.5 py-3 text-foreground"
+                            >
+                                {item.title}
+                            </span>
+                        ) : (
+                            <Link
+                                href={item.href}
+                                className="eyebrow flex items-center gap-1.5 px-3.5 py-3 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            >
+                                {index === 0 && (
+                                    <Home className="size-3" aria-hidden />
+                                )}
+                                {item.title}
+                            </Link>
+                        )}
+                    </li>
+                ))}
+            </ol>
+        </nav>
     );
 }

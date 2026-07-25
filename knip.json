@@ -13,6 +13,8 @@
         "resources/js/layouts/auth/{auth-card-layout,auth-split-layout}.tsx"
     ],
     "ignoreDependencies": [
+        "@fontsource-variable/archivo",
+        "@fontsource-variable/newsreader",
         "@fontsource/instrument-sans",
         "@radix-ui/react-navigation-menu",
         "@radix-ui/react-toggle",

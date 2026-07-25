@@ -5,20 +5,13 @@ export default function Terms() {
         <>
             <Head title="Terms of Use" />
             <div className="mx-auto w-full max-w-3xl px-4 py-12 sm:py-16">
-                <header className="mb-10 grid gap-4">
-                    <p className="flex items-center gap-2 text-xs font-medium tracking-widest text-muted-foreground uppercase">
-                        <span className="moon-dot" aria-hidden />
-                        Legal
-                    </p>
-                    <h1 className="font-display text-4xl font-semibold tracking-tight sm:text-5xl">
-                        Terms of Use
-                    </h1>
+                <header className="mb-10 grid gap-5 border-t border-border pt-5">
+                    <p className="eyebrow text-brand-accent">Legal</p>
+                    <h1 className="display-lg">Terms of Use</h1>
                 </header>
-                <div className="grid gap-8 text-base leading-7 text-foreground/90">
+                <div className="grid gap-8 font-body text-lg leading-relaxed text-foreground/90">
                     <section className="grid gap-3">
-                        <h2 className="font-display text-2xl font-semibold">
-                            Content
-                        </h2>
+                        <h2 className="display-md">Content</h2>
                         <p>
                             The writing on this site belongs to its authors. You
                             are welcome to quote and link to posts with
@@ -29,7 +22,7 @@ export default function Terms() {
                         </p>
                     </section>
                     <section className="grid gap-3">
-                        <h2 className="font-display text-2xl font-semibold">
+                        <h2 className="display-md">
                             Reader accounts and comments
                         </h2>
                         <p>
@@ -52,9 +45,7 @@ export default function Terms() {
                         </p>
                     </section>
                     <section className="grid gap-3">
-                        <h2 className="font-display text-2xl font-semibold">
-                            Newsletter and sharing
-                        </h2>
+                        <h2 className="display-md">Newsletter and sharing</h2>
                         <p>
                             Newsletter enrollment requires email confirmation
                             and can be cancelled immediately through the
@@ -65,9 +56,7 @@ export default function Terms() {
                         </p>
                     </section>
                     <section className="grid gap-3">
-                        <h2 className="font-display text-2xl font-semibold">
-                            No warranty
-                        </h2>
+                        <h2 className="display-md">No warranty</h2>
                         <p>
                             Posts describe what worked for us at the time of
                             writing. Software moves quickly, and advice can go
@@ -78,9 +67,7 @@ export default function Terms() {
                         </p>
                     </section>
                     <section className="grid gap-3">
-                        <h2 className="font-display text-2xl font-semibold">
-                            External links
-                        </h2>
+                        <h2 className="display-md">External links</h2>
                         <p>
                             Posts link out to other sites. Those sites are not
                             under our control, and linking to them does not mean

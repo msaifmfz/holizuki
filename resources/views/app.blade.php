@@ -1,5 +1,17 @@
+{{-- The public blog and the admin console share this shell but not their
+     design tokens. `public-surface` switches the token set (see public.css)
+     and is derived from the Inertia component name so the first paint matches
+     the layout switch in resources/js/app.tsx. Inertia never re-renders this
+     shell, so subsequent visits are kept in sync by the useSurface() hook in
+     resources/js/hooks/use-surface.ts — change both together. --}}
+@php($component = $page['component'] ?? '')
+@php($isPublicSurface = str_starts_with($component, 'public/')
+    || ($component === 'error' && ($page['props']['portal'] ?? null) !== 'admin'))
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @class(['dark' => ($appearance ?? 'system') == 'dark'])>
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @class([
+    'dark' => ($appearance ?? 'system') == 'dark',
+    'public-surface' => $isPublicSurface,
+])>
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -19,7 +31,8 @@
             })();
         </script>
 
-        {{-- Inline style to set the HTML background color based on our theme in app.css --}}
+        {{-- Inline style to set the HTML background color based on our theme.
+             Mirrors --background in admin.css and public.css; keep in sync. --}}
         <style>
             html {
                 background-color: oklch(1 0 0);
@@ -27,6 +40,14 @@
 
             html.dark {
                 background-color: oklch(0.145 0 0);
+            }
+
+            html.public-surface {
+                background-color: oklch(0.955 0.012 268);
+            }
+
+            html.public-surface.dark {
+                background-color: oklch(0.185 0.042 268);
             }
         </style>
 
@@ -76,8 +97,6 @@
             @endisset
         @endisset
         <link rel="alternate" type="application/rss+xml" title="{{ config('app.name', 'Holizuki') }}" href="{{ url('/feed') }}">
-
-        @fonts
 
         @viteReactRefresh
         @vite(['resources/css/app.css', 'resources/js/app.tsx', "resources/js/pages/{$page['component']}.tsx"])

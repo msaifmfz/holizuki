@@ -72,17 +72,20 @@ export default function AnalyticsConsentManager() {
             role={managerOpen ? 'dialog' : 'region'}
             aria-modal={managerOpen ? true : undefined}
             aria-labelledby="analytics-consent-title"
-            className="fixed right-3 bottom-3 left-3 z-[90] mx-auto grid max-w-3xl gap-4 rounded-xl border bg-background p-5 shadow-2xl sm:grid-cols-[1fr_auto] sm:items-center"
+            // Sits on the night band rather than the page surface: a consent
+            // notice is chrome over the article, and the constant dark ground
+            // separates it from the reading without a drop shadow doing the work.
+            className="band-night fixed right-3 bottom-3 left-3 z-[90] mx-auto grid max-w-3xl gap-5 border border-night-muted/30 p-5 sm:grid-cols-[1fr_auto] sm:items-center"
         >
             <div className="grid gap-2">
                 <h2
                     id="analytics-consent-title"
-                    className="flex items-center gap-2 font-semibold"
+                    className="eyebrow flex items-center gap-2 text-night-accent"
                 >
-                    <ShieldCheck className="size-5" aria-hidden />
+                    <ShieldCheck className="size-3.5" aria-hidden />
                     Privacy choices
                 </h2>
-                <p className="text-sm leading-6 text-muted-foreground">
+                <p className="font-body text-sm leading-relaxed text-night-muted">
                     With your permission, privacy-limited Google Analytics helps
                     us understand which writing is useful. Nothing is loaded
                     until you accept, and declining works for{' '}
@@ -95,6 +98,7 @@ export default function AnalyticsConsentManager() {
                     variant="outline"
                     data-testid="analytics-decline"
                     onClick={() => decide('declined')}
+                    className="micro-cta h-10 rounded-none border-night-muted/40 bg-transparent px-4 text-night-foreground hover:border-night-foreground hover:bg-transparent hover:text-night-foreground"
                 >
                     {consent?.status === 'accepted'
                         ? 'Withdraw consent'
@@ -104,6 +108,7 @@ export default function AnalyticsConsentManager() {
                     type="button"
                     data-testid="analytics-accept"
                     onClick={() => decide('accepted')}
+                    className="micro-cta h-10 rounded-none bg-night-accent px-4 text-night hover:bg-night-accent/90"
                 >
                     Accept analytics
                 </Button>
@@ -113,6 +118,7 @@ export default function AnalyticsConsentManager() {
                         variant="ghost"
                         data-testid="analytics-cancel"
                         onClick={() => setManagerOpen(false)}
+                        className="micro-cta h-10 rounded-none px-3 text-night-muted hover:bg-transparent hover:text-night-foreground"
                     >
                         Cancel
                     </Button>

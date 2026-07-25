@@ -84,8 +84,8 @@ export default function ShareTools({ title, methods, postId }: Props) {
     }
 
     return (
-        <aside className="mt-8 flex flex-wrap items-center gap-2 border-y py-4">
-            <span className="mr-1 text-sm font-medium">Share</span>
+        <aside className="post-share mt-10 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border pt-6">
+            <span className="eyebrow mr-1 text-brand-accent">Pass it on</span>
             {methods.map((method) => {
                 if (
                     method === 'native' &&
@@ -109,6 +109,10 @@ export default function ShareTools({ title, methods, postId }: Props) {
                         type="button"
                         variant="outline"
                         size="sm"
+                        // Borderless: the share list can run to nine entries
+                        // depending on config, and nine bordered boxes outweighed
+                        // the article they sit under.
+                        className="eyebrow h-auto rounded-none border-0 bg-transparent px-0 text-muted-foreground underline-offset-4 shadow-none hover:bg-transparent hover:text-primary hover:underline"
                         onClick={() => void share(method)}
                     >
                         <Icon className="size-3.5" aria-hidden />

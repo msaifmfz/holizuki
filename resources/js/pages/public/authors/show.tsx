@@ -1,8 +1,9 @@
 import { Head } from '@inertiajs/react';
+
 import Pagination from '@/components/pagination';
-import ArchiveHeader from '@/components/public/archive-header';
 import EmptyState from '@/components/public/empty-state';
-import PostGrid from '@/components/public/post-grid';
+import PageHeader, { postCount } from '@/components/public/page-header';
+import PostList from '@/components/public/post-list';
 import type { Paginated, PublicAuthor, PublicPostCard } from '@/types';
 
 type Props = {
@@ -14,19 +15,19 @@ export default function AuthorShow({ author, posts }: Props) {
     return (
         <>
             <Head title={author.name} />
-            <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-12">
-                <ArchiveHeader
-                    kicker="Author"
+            <div className="mx-auto grid w-full max-w-6xl gap-12 px-4 py-12">
+                <PageHeader
+                    eyebrow="Words by"
                     title={author.name}
                     description={author.bio}
-                    postsCount={author.posts_count}
+                    meta={postCount(author.posts_count)}
                     avatarUrl={author.avatar_url}
                     avatarName={author.name}
                     socialLinks={author.social_links}
                 />
                 {posts.data.length > 0 ? (
-                    <>
-                        <PostGrid
+                    <div className="grid gap-14">
+                        <PostList
                             posts={posts.data}
                             contentSource="recommendation"
                             contentLocation="author_archive"
@@ -35,7 +36,7 @@ export default function AuthorShow({ author, posts }: Props) {
                             paginator={posts}
                             label={`Posts by ${author.name}`}
                         />
-                    </>
+                    </div>
                 ) : (
                     <EmptyState
                         title="No posts yet"

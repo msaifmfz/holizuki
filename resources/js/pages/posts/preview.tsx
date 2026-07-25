@@ -48,9 +48,12 @@ export default function PostPreview({
                     </div>
                 </div>
             </div>
-            <article className="mx-auto w-full max-w-4xl px-4 py-10 sm:py-16">
+            {/* `public-tokens` swaps in the reader palette and display face for
+                this subtree only, so the preview matches the live post while
+                the admin chrome above it stays neutral. */}
+            <article className="public-tokens mx-auto w-full max-w-4xl bg-background px-4 py-10 text-foreground sm:py-16">
                 <header className="mb-10 grid gap-5 text-center">
-                    <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
+                    <h1 className="font-display text-4xl font-semibold text-balance sm:text-5xl">
                         {post.title}
                     </h1>
                     {post.excerpt && (
