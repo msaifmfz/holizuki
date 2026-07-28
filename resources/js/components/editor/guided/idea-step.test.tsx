@@ -96,6 +96,29 @@ describe('IdeaStep', () => {
         ).toBeInTheDocument();
     });
 
+    it('keeps the selected personality description readable', () => {
+        render(
+            <IdeaStep
+                journey={journey}
+                generating={false}
+                assistantAvailable
+                onBriefChange={vi.fn()}
+                onPersonalityChange={vi.fn()}
+                savingStyleAsDefault={false}
+                onSaveStyleAsDefaultChange={vi.fn()}
+                onCustomInstructionsChange={vi.fn()}
+                onGeneratePlans={vi.fn()}
+            />,
+        );
+
+        expect(
+            screen.getByText('Warm, encouraging, and easy to understand.'),
+        ).toHaveClass('text-foreground/75');
+        expect(
+            screen.getByText('Clear, polished, and focused on credibility.'),
+        ).toHaveClass('text-muted-foreground');
+    });
+
     it('keeps promoting the style to a default an explicit choice', async () => {
         const user = userEvent.setup();
         const onSaveStyleAsDefaultChange = vi.fn();

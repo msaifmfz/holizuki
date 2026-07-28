@@ -215,7 +215,15 @@ export default function IdeaStep({
                                 <span className="text-sm font-medium">
                                     {personality.title}
                                 </span>
-                                <span className="text-xs text-muted-foreground">
+                                <span
+                                    className={cn(
+                                        'text-xs',
+                                        journey.personality ===
+                                            personality.value
+                                            ? 'text-foreground/75'
+                                            : 'text-muted-foreground',
+                                    )}
+                                >
                                     {personality.description}
                                 </span>
                             </button>

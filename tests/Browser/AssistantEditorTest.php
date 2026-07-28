@@ -8,13 +8,17 @@ beforeEach(function (): void {
     $this->actingAs($this->user);
 });
 
-it('shows the outline wizard and opens the co-writer on an empty post', function (): void {
+it('moves from guided authoring to the advanced co-writer on an empty post', function (): void {
     $post = Post::factory()->for($this->user, 'author')->create([
         'title' => 'A blank canvas',
         'body' => null,
     ]);
 
     visit("/posts/{$post->id}/edit")
+        ->wait(1)
+        ->assertSee('What do you want to write about?')
+        ->assertSee('Ask AI for three plans')
+        ->click('Open full editor')
         ->wait(1)
         ->assertSee('Start this article with AI')
         ->assertSee('Outline it')
@@ -38,6 +42,9 @@ it('offers metadata and image assistance on a post with content', function (): v
     ]);
 
     visit("/posts/{$post->id}/edit")
+        ->wait(1)
+        ->assertSee('Write one clear step at a time')
+        ->click('Open full editor')
         ->wait(1)
         ->assertDontSee('Start this article with AI')
         ->assertSee('Generate all')

@@ -115,7 +115,6 @@ RUN groupadd --gid 10001 app \
         /tmp/caddy/config \
         /tmp/caddy/data
 
-COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=claude-cli /usr/local/bin/claude /usr/local/bin/claude
 COPY --from=backend --chown=app:app /app /app
 COPY --from=frontend --chown=app:app /build/public/build /app/public/build

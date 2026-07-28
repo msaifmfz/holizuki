@@ -2,6 +2,13 @@
 
 declare(strict_types=1);
 
+use Illuminate\Foundation\Vite;
+
+test('feature tests do not require compiled Vite assets', function (): void {
+    expect((string) resolve(Vite::class)(['resources/js/app.tsx'], 'missing-build'))
+        ->toBe('');
+});
+
 test('the development server uses the canonical local origin and devbox environment', function (): void {
     expect(app()->environment())->toBe('testing')
         ->and(config('database.default'))->toBe('sqlite')
