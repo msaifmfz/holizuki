@@ -18,20 +18,22 @@ beforeEach(function (): void {
 /** @return array<string, mixed> */
 function seoAutosavePayload(Post $post, array $overrides = []): array
 {
+    $draft = $post->draft()->firstOrFail();
+
     return [
-        'title' => $post->title,
-        'slug' => $post->slug,
-        'slug_is_manual' => $post->slug_is_manual,
-        'excerpt' => $post->excerpt,
-        'body' => $post->body,
-        'featured_image_alt' => $post->featured_image_alt,
-        'featured_image_caption' => $post->featured_image_caption,
-        'seo_title' => $post->seo_title,
-        'meta_description' => $post->meta_description,
-        'canonical_url' => $post->canonical_url,
-        'og_title' => $post->og_title,
-        'og_description' => $post->og_description,
-        'noindex' => $post->noindex,
+        'title' => $draft->title,
+        'slug' => $draft->slug,
+        'slug_is_manual' => $draft->slug_is_manual,
+        'excerpt' => $draft->excerpt,
+        'body' => $draft->body,
+        'featured_image_alt' => $draft->featured_image_alt,
+        'featured_image_caption' => $draft->featured_image_caption,
+        'seo_title' => $draft->seo_title,
+        'meta_description' => $draft->meta_description,
+        'canonical_url' => $draft->canonical_url,
+        'og_title' => $draft->og_title,
+        'og_description' => $draft->og_description,
+        'noindex' => $draft->noindex,
         'lock_version' => $post->lock_version,
         ...$overrides,
     ];
@@ -51,13 +53,14 @@ test('autosave persists per-post seo fields', function (): void {
         ]))
         ->assertOk();
 
-    $post->refresh();
-    expect($post->seo_title)->toBe('Hand-tuned SEO title')
-        ->and($post->meta_description)->toBe('A crisp meta description for search results.')
-        ->and($post->canonical_url)->toBe('https://example.com/original-guide')
-        ->and($post->og_title)->toBe('Social title')
-        ->and($post->og_description)->toBe('Social description')
-        ->and($post->noindex)->toBeTrue();
+    $draft = $post->refresh()->draft;
+    expect($draft?->seo_title)->toBe('Hand-tuned SEO title')
+        ->and($draft?->meta_description)->toBe('A crisp meta description for search results.')
+        ->and($draft?->canonical_url)->toBe('https://example.com/original-guide')
+        ->and($draft?->og_title)->toBe('Social title')
+        ->and($draft?->og_description)->toBe('Social description')
+        ->and($draft?->noindex)->toBeTrue()
+        ->and($post->seo_title)->toBeNull();
 });
 
 test('an invalid canonical url is rejected', function (): void {
@@ -83,7 +86,7 @@ test('resaving identical content does not bump content_updated_at', function ():
         ->toBe($originalContentUpdatedAt?->toIso8601String());
 });
 
-test('a body change bumps content_updated_at but an seo-only change does not', function (): void {
+test('draft changes bump content_updated_at only when they are published', function (): void {
     $post = Post::factory()->published()->for($this->user, 'author')->create(['body' => $this->body]);
     $originalContentUpdatedAt = $post->content_updated_at;
 
@@ -108,6 +111,13 @@ test('a body change bumps content_updated_at but an seo-only change does not', f
                 ]],
             ],
         ]))
+        ->assertOk();
+
+    expect($post->refresh()->content_updated_at?->toIso8601String())
+        ->toBe($originalContentUpdatedAt?->toIso8601String());
+
+    $this->actingAs($this->user)
+        ->postJson(route('posts.publish', $post), ['lock_version' => $post->lock_version])
         ->assertOk();
 
     expect($post->refresh()->content_updated_at?->toIso8601String())
@@ -154,10 +164,10 @@ test('revisions snapshot seo fields and restoring brings them back', function ()
         ->postJson(route('posts.revisions.restore', [$post, $revision]), ['lock_version' => $post->refresh()->lock_version])
         ->assertOk();
 
-    $post->refresh();
-    expect($post->seo_title)->toBe('Original SEO title')
-        ->and($post->meta_description)->toBe('Original meta description')
-        ->and($post->noindex)->toBeTrue();
+    $draft = $post->refresh()->draft;
+    expect($draft?->seo_title)->toBe('Original SEO title')
+        ->and($draft?->meta_description)->toBe('Original meta description')
+        ->and($draft?->noindex)->toBeTrue();
 });
 
 test('changing the slug of a published post records a permanent redirect', function (): void {
@@ -171,6 +181,9 @@ test('changing the slug of a published post records a permanent redirect', funct
             'slug' => 'second-slug',
             'slug_is_manual' => true,
         ]))
+        ->assertOk();
+    $this->actingAs($this->user)
+        ->postJson(route('posts.publish', $post), ['lock_version' => $post->refresh()->lock_version])
         ->assertOk();
 
     $redirect = PostRedirect::sole();
@@ -207,6 +220,9 @@ test('repeated slug changes keep every old slug pointing at the post', function 
                 'slug_is_manual' => true,
             ]))
             ->assertOk();
+        $this->actingAs($this->user)
+            ->postJson(route('posts.publish', $post), ['lock_version' => $post->refresh()->lock_version])
+            ->assertOk();
     }
 
     expect(PostRedirect::pluck('post_id', 'old_slug')->all())
@@ -225,12 +241,18 @@ test('reclaiming a redirected slug removes the shadowing redirect', function ():
             'slug_is_manual' => true,
         ]))
         ->assertOk();
+    $this->actingAs($this->user)
+        ->postJson(route('posts.publish', $post), ['lock_version' => $post->refresh()->lock_version])
+        ->assertOk();
 
     $this->actingAs($this->user)
         ->patchJson(route('posts.autosave', $post->refresh()), seoAutosavePayload($post, [
             'slug' => 'slug-a',
             'slug_is_manual' => true,
         ]))
+        ->assertOk();
+    $this->actingAs($this->user)
+        ->postJson(route('posts.publish', $post), ['lock_version' => $post->refresh()->lock_version])
         ->assertOk();
 
     expect(PostRedirect::pluck('post_id', 'old_slug')->all())

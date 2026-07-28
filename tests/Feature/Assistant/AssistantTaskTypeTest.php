@@ -20,4 +20,7 @@ test('only conversational tasks resume the persistent session', function (Assist
     'transform' => [AssistantTaskType::Transform, false],
     'metadata' => [AssistantTaskType::Metadata, false],
     'images' => [AssistantTaskType::Images, false],
+    'plans' => [AssistantTaskType::Plans, false],
+    'draft' => [AssistantTaskType::Draft, false],
+    'research' => [AssistantTaskType::Research, false],
 ]);

@@ -1,4 +1,8 @@
-import type { RichTextDocument, TableOfContentsItem } from '@/types';
+import type {
+    CitationSource,
+    RichTextDocument,
+    TableOfContentsItem,
+} from '@/types';
 
 type RichTextNode = RichTextDocument;
 
@@ -134,4 +138,37 @@ export function safeHeadingId(value: unknown): string | null {
     const id = value.trim();
 
     return id !== '' && /^[a-zA-Z0-9][a-zA-Z0-9_:.-]*$/.test(id) ? id : null;
+}
+
+export function normalizeCitationSources(
+    sources: CitationSource[] | undefined,
+): CitationSource[] {
+    const seenNumbers = new Set<number>();
+    const seenSourceIds = new Set<number>();
+
+    return (sources ?? [])
+        .filter((source) => {
+            const valid =
+                Number.isSafeInteger(source.number) &&
+                source.number > 0 &&
+                Number.isSafeInteger(source.source_id) &&
+                source.source_id > 0 &&
+                ['note', 'url', 'document'].includes(source.kind) &&
+                source.title.trim() !== '' &&
+                !seenNumbers.has(source.number) &&
+                !seenSourceIds.has(source.source_id);
+
+            if (valid) {
+                seenNumbers.add(source.number);
+                seenSourceIds.add(source.source_id);
+            }
+
+            return valid;
+        })
+        .map((source) => ({
+            ...source,
+            title: source.title.trim(),
+            url: source.kind === 'url' ? safeLinkUrl(source.url) : null,
+        }))
+        .sort((left, right) => left.number - right.number);
 }

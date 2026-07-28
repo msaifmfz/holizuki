@@ -53,7 +53,7 @@ test('image files and the manifest are materialized for the agent to see', funct
     Storage::disk('public')->put('posts/'.$this->post->id.'/inline/pic.webp', 'inline-binary');
     Storage::disk('public')->put('posts/'.$this->post->id.'/featured.webp', 'featured-binary');
     $media = PostMedia::factory()->for($this->post, 'post')->create(['path' => 'posts/'.$this->post->id.'/inline/pic.webp']);
-    $this->post->forceFill(['featured_image_path' => 'posts/'.$this->post->id.'/featured.webp'])->save();
+    $this->post->draft()->update(['featured_image_path' => 'posts/'.$this->post->id.'/featured.webp']);
 
     $manifestSeen = null;
     fakeImageRunner([
@@ -69,8 +69,9 @@ test('image files and the manifest are materialized for the agent to see', funct
         ->streamedContent();
 
     expect($manifestSeen)->toHaveCount(2)
-        ->and($manifestSeen[0]['role'])->toBe('inline')
+        ->and($manifestSeen[0]['role'])->toBe('unassigned')
         ->and($manifestSeen[0]['mediaId'])->toBe($media->id)
+        ->and($manifestSeen[0]['storyPriority'])->toBe('required')
         ->and($manifestSeen[1]['role'])->toBe('featured')
         ->and($manifestSeen[1]['file'])->toBe('images/featured.webp');
 });
@@ -79,7 +80,7 @@ test('alt text and placement edits become reviewable changes', function (): void
     Storage::disk('public')->put('posts/'.$this->post->id.'/inline/pic.webp', 'binary');
     Storage::disk('public')->put('posts/'.$this->post->id.'/featured.webp', 'binary');
     $media = PostMedia::factory()->for($this->post, 'post')->create(['path' => 'posts/'.$this->post->id.'/inline/pic.webp']);
-    $this->post->forceFill(['featured_image_path' => 'posts/'.$this->post->id.'/featured.webp'])->save();
+    $this->post->draft()->update(['featured_image_path' => 'posts/'.$this->post->id.'/featured.webp']);
 
     $runner = fakeImageRunner([
         function (AgentRequest $request) use ($media): void {
@@ -141,6 +142,6 @@ test('accepting a placement change persists the image into the body', function (
         ->postJson(route('posts.assistant.changes.accept', [$this->post, $change]))
         ->assertSuccessful();
 
-    $body = $this->post->refresh()->body;
+    $body = $this->post->draft()->firstOrFail()->body;
     expect($body?->referencedMediaIds())->toBe([$media->id]);
 });

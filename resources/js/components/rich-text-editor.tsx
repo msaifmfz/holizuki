@@ -18,6 +18,7 @@ import xml from 'highlight.js/lib/languages/xml';
 import { createLowlight } from 'lowlight';
 import {
     Bold,
+    BookMarked,
     Code,
     Heading2,
     Heading3,
@@ -54,9 +55,11 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { usePostSources } from '@/hooks/use-post-sources';
 import { findTextRange, plainTextNeedle } from '@/lib/assistant/locate';
 import { LocateHighlight } from '@/lib/assistant/locate-highlight';
 import type { TransformPreset } from '@/lib/assistant/transforms';
+import { PostCitation } from '@/lib/citation-node';
 import { resizeInlineImage } from '@/lib/crop-image';
 import { errorText } from '@/lib/post-editor';
 import { cn } from '@/lib/utils';
@@ -153,6 +156,7 @@ export default function RichTextEditor({
     const [imageAlt, setImageAlt] = useState('');
     const [imageCaption, setImageCaption] = useState('');
     const [imageError, setImageError] = useState<string | null>(null);
+    const [citationDialogOpen, setCitationDialogOpen] = useState(false);
     const inlineImage = useHttp<
         { image: File | null; alt_text: string; caption: string },
         InlineImageResponse
@@ -179,6 +183,7 @@ export default function RichTextEditor({
                 allowBase64: false,
                 inline: false,
             }),
+            PostCitation,
             LocateHighlight,
         ],
         content: value ?? { type: 'doc', content: [{ type: 'paragraph' }] },
@@ -521,6 +526,14 @@ export default function RichTextEditor({
                     >
                         <LinkIcon />
                     </ToolbarButton>
+                    {postId !== undefined && (
+                        <ToolbarButton
+                            label="Insert citation"
+                            onClick={() => setCitationDialogOpen(true)}
+                        >
+                            <BookMarked />
+                        </ToolbarButton>
+                    )}
                     <ToolbarButton
                         label="Horizontal rule"
                         onClick={() =>
@@ -659,6 +672,95 @@ export default function RichTextEditor({
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+            <Dialog
+                open={citationDialogOpen}
+                onOpenChange={setCitationDialogOpen}
+            >
+                <DialogContent className="sm:max-w-xl">
+                    <DialogHeader>
+                        <DialogTitle>Insert a citation</DialogTitle>
+                        <DialogDescription>
+                            Choose an approved source that is shown to readers.
+                            Citation numbers follow the order in which sources
+                            first appear.
+                        </DialogDescription>
+                    </DialogHeader>
+                    {postId !== undefined && citationDialogOpen && (
+                        <CitationPicker
+                            postId={postId}
+                            onSelect={(sourceId) => {
+                                editor
+                                    .chain()
+                                    .focus()
+                                    .insertContent({
+                                        type: 'citation',
+                                        attrs: { sourceId },
+                                    })
+                                    .run();
+                                setCitationDialogOpen(false);
+                            }}
+                        />
+                    )}
+                </DialogContent>
+            </Dialog>
+        </div>
+    );
+}
+
+function CitationPicker({
+    postId,
+    onSelect,
+}: {
+    postId: number;
+    onSelect: (sourceId: number) => void;
+}) {
+    const { sources, hydrated, error } = usePostSources(postId);
+    const approvedSources = sources.filter(
+        (source) => source.approved && source.visibility === 'public',
+    );
+
+    if (!hydrated) {
+        return (
+            <div
+                className="h-28 animate-pulse rounded-md bg-muted"
+                aria-label="Loading sources"
+            />
+        );
+    }
+
+    if (error) {
+        return <p className="text-sm text-destructive">{error}</p>;
+    }
+
+    if (approvedSources.length === 0) {
+        return (
+            <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                Approve a source and mark it as shown to readers before citing
+                it.
+            </p>
+        );
+    }
+
+    return (
+        <div className="grid max-h-80 gap-2 overflow-y-auto pr-1">
+            {approvedSources.map((source) => (
+                <Button
+                    key={source.id}
+                    type="button"
+                    variant="outline"
+                    className="h-auto justify-start px-4 py-3 text-left"
+                    onClick={() => onSelect(source.id)}
+                >
+                    <span className="grid gap-0.5">
+                        <span className="font-medium whitespace-normal">
+                            {source.title}
+                        </span>
+                        <span className="text-xs font-normal text-muted-foreground capitalize">
+                            {source.kind}
+                        </span>
+                    </span>
+                </Button>
+            ))}
         </div>
     );
 }

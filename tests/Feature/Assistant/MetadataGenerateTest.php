@@ -119,7 +119,8 @@ test('a metadata turn streams narration and records field proposals', function (
         ->and($request->prompt)->toContain($request->workspacePath.'/meta.json')
         ->and($request->systemPrompt)->toContain($request->workspacePath.'/draft.md')
         ->and($request->systemPrompt)->toContain($request->workspacePath.'/meta.json')
-        ->and($request->allowedTools)->toBe([
+        ->and($request->enabledTools)->toBe(['Read', 'Edit'])
+        ->and($request->allowedToolRules)->toBe([
             "Read({$runDirectory}/draft.md)",
             "Read({$runDirectory}/meta.json)",
             "Edit({$runDirectory}/meta.json)",

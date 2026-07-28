@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Publishing\Console;
 
+use App\Domain\Publishing\Enums\PostMediaOrigin;
 use App\Domain\Publishing\Models\Post;
 use App\Domain\Publishing\Models\PostMedia;
 use Illuminate\Console\Attributes\Description;
@@ -21,10 +22,14 @@ class PruneUnusedPostMedia extends Command
         $deleted = 0;
 
         PostMedia::query()
+            ->where('origin', PostMediaOrigin::InlineEditor)
             ->where('created_at', '<=', now()->subDay())
             ->chunkById(100, function (Collection $media) use (&$deleted): void {
                 $posts = Post::withTrashed()
-                    ->with('revisions:id,post_id,body')
+                    ->with([
+                        'draft:id,post_id,body',
+                        'revisions:id,post_id,referenced_media_ids',
+                    ])
                     ->whereKey($media->pluck('post_id')->unique())
                     ->get(['id', 'body'])
                     ->keyBy('id');
@@ -36,10 +41,13 @@ class PruneUnusedPostMedia extends Command
                         continue;
                     }
 
-                    $referencedIds = $post->body?->referencedMediaIds() ?? [];
+                    $referencedIds = [
+                        ...$post->body?->referencedMediaIds() ?? [],
+                        ...$post->draft?->body?->referencedMediaIds() ?? [],
+                    ];
 
                     foreach ($post->revisions as $revision) {
-                        $referencedIds = [...$referencedIds, ...$revision->body?->referencedMediaIds() ?? []];
+                        $referencedIds = [...$referencedIds, ...$revision->referenced_media_ids];
                     }
 
                     if (in_array($item->id, $referencedIds, true)) {

@@ -166,7 +166,7 @@ test('scheduled publishing skips a post that is no longer scheduled', function (
         'scheduled_at' => null,
     ]);
 
-    resolve(PublishPost::class)->handle($post, editor: null, publishedAt: now());
+    resolve(PublishPost::class)->publishScheduled($post, editor: null, publishedAt: now());
 
     expect($post->refresh()->status)->toBe(PostStatus::Draft)
         ->and($post->published_at)->toBeNull()

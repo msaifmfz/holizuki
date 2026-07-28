@@ -22,9 +22,10 @@ class PostRevisionController extends Controller
     public function index(Post $post): Response
     {
         Gate::authorize('update', $post);
+        $draftTitle = $post->draft()->value('title');
 
         return Inertia::render('posts/revisions/index', [
-            'post' => ['id' => $post->id, 'title' => $post->title ?? 'Untitled post', 'lock_version' => $post->lock_version],
+            'post' => ['id' => $post->id, 'title' => $draftTitle ?? $post->title ?? 'Untitled post', 'lock_version' => $post->lock_version],
             'revisions' => $post->revisions()->with('editor:id,name')->latest('revision_number')->paginate(20)->through(
                 fn (PostRevision $revision): array => $this->summary($revision),
             ),
@@ -34,9 +35,7 @@ class PostRevisionController extends Controller
     public function show(Post $post, PostRevision $revision, BuildReaderDocument $buildReaderDocument): Response
     {
         Gate::authorize('update', $post);
-        $revisionPost = clone $post;
-        $revisionPost->body = $revision->body;
-        $reader = $buildReaderDocument->handle($revisionPost);
+        $reader = $buildReaderDocument->forAuthorPreview($post, $revision->body);
 
         return Inertia::render('posts/preview', [
             'post' => [
@@ -44,6 +43,7 @@ class PostRevisionController extends Controller
                 'title' => $revision->title ?? 'Untitled post',
                 'excerpt' => $revision->excerpt,
                 'body' => $reader['document'],
+                'citations' => $reader['citations'],
                 'featured_image_url' => $revision->featured_image_path === null ? null : Storage::disk('public')->url($revision->featured_image_path),
                 'featured_image_alt' => $revision->featured_image_alt,
                 'featured_image_caption' => $revision->featured_image_caption,

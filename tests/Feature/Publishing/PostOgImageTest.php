@@ -31,7 +31,7 @@ test('administrators can upload, replace, and remove a social sharing image', fu
         ])->assertOk()
         ->assertJsonPath('lock_version', 1);
 
-    $firstPath = (string) $post->refresh()->og_image_path;
+    $firstPath = (string) $post->refresh()->draft?->og_image_path;
     Storage::disk('public')->assertExists($firstPath);
     expect($response->json('og_image_url'))->toBe(Storage::disk('public')->url($firstPath));
 
@@ -42,15 +42,16 @@ test('administrators can upload, replace, and remove a social sharing image', fu
         ])->assertOk()
         ->assertJsonPath('lock_version', 2);
 
-    Storage::disk('public')->assertMissing($firstPath);
+    Storage::disk('public')->assertExists($firstPath);
 
     $this->actingAs($this->user)
         ->deleteJson(route('posts.og-image.destroy', $post), ['lock_version' => 2])
         ->assertOk()
         ->assertJsonPath('og_image_url', null);
 
-    expect($post->refresh()->og_image_path)->toBeNull();
-    expect(Storage::disk('public')->allFiles('posts/'.$post->id))->toBe([]);
+    expect($post->refresh()->draft?->og_image_path)->toBeNull()
+        ->and($post->og_image_path)->toBeNull();
+    Storage::disk('public')->assertExists($firstPath);
 });
 
 test('stale lock versions are rejected', function (): void {
@@ -80,8 +81,10 @@ test('permanent deletion removes current and historical social sharing images', 
     $post->revisions()->create([
         'revision_number' => 1,
         'event' => 'saved',
-        'slug' => $post->slug,
-        'og_image_path' => 'posts/1/og-old.webp',
+        'snapshot' => [
+            'slug' => $post->slug,
+            'og_image_path' => 'posts/1/og-old.webp',
+        ],
     ]);
     Storage::disk('public')->put('posts/1/og-current.webp', 'current');
     Storage::disk('public')->put('posts/1/og-old.webp', 'old');

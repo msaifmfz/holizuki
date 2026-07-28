@@ -8,17 +8,19 @@ use App\Domain\Assistant\Enums\AssistantTaskType;
 use App\Domain\Assistant\Models\AssistantTurn;
 use App\Domain\Publishing\Markdown\MarkdownSerializer;
 use App\Domain\Publishing\Models\Post;
+use App\Domain\Publishing\Models\PostDraft;
 use App\Domain\Publishing\ValueObjects\RichTextDocument;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use JsonException;
+use RuntimeException;
 use UnexpectedValueException;
 
 /**
  * Materializes the on-disk workspace an agent turn operates on: the draft as
  * markdown, editable metadata as JSON, and the post's images. The workspace
- * is rebuilt from the live post before every turn so the author's latest
+ * is rebuilt from the private working draft before every turn so the author's latest
  * autosaved state always wins as the base the agent edits.
  */
 class WorkspaceManager
@@ -56,6 +58,11 @@ class WorkspaceManager
 
     public function materialize(Post $post, AssistantTurn $turn): void
     {
+        $post->loadMissing([
+            'draft.tags:id,name',
+            'draft.category:id,name',
+            'media',
+        ]);
         $path = $this->pathForRun($post, $turn->run_token);
         $root = $this->rootFor($post);
         $runs = $root.'/runs';
@@ -99,7 +106,17 @@ class WorkspaceManager
             return;
         }
 
-        $this->materializeImages($post, $path);
+        $turnContext = $turn->context ?? [];
+        $authoringMediaIds = null;
+
+        if (array_key_exists('authoring_media_ids', $turnContext)) {
+            $rawMediaIds = $turnContext['authoring_media_ids'];
+            $authoringMediaIds = is_array($rawMediaIds)
+                ? array_values(array_filter($rawMediaIds, is_int(...)))
+                : [];
+        }
+
+        $this->materializeImages($post, $path, $authoringMediaIds);
     }
 
     public function destroy(Post $post): bool
@@ -109,7 +126,9 @@ class WorkspaceManager
 
     public function draftMarkdown(Post $post): string
     {
-        return $post->body instanceof RichTextDocument ? $this->serializer->serialize($post->body) : '';
+        $body = $this->workingDraft($post)->body;
+
+        return $body instanceof RichTextDocument ? $this->serializer->serialize($body) : '';
     }
 
     public function destroyRun(Post $post, string $runToken): bool
@@ -208,20 +227,21 @@ class WorkspaceManager
     /** @return array<string, mixed> */
     public function metaFor(Post $post): array
     {
-        $post->load(['tags', 'category']);
+        $draft = $this->workingDraft($post);
+        $draft->loadMissing(['tags:id,name', 'category:id,name']);
 
         return [
-            'title' => $post->title,
-            'slug' => $post->slug,
-            'excerpt' => $post->excerpt,
-            'seo_title' => $post->seo_title,
-            'meta_description' => $post->meta_description,
-            'og_title' => $post->og_title,
-            'og_description' => $post->og_description,
-            'tags' => $post->tags->pluck('name')->values()->all(),
-            'category' => $post->category?->name,
-            'featured_image_alt' => $post->featured_image_alt,
-            'featured_image_caption' => $post->featured_image_caption,
+            'title' => $draft->title,
+            'slug' => $draft->slug,
+            'excerpt' => $draft->excerpt,
+            'seo_title' => $draft->seo_title,
+            'meta_description' => $draft->meta_description,
+            'og_title' => $draft->og_title,
+            'og_description' => $draft->og_description,
+            'tags' => $draft->tags->pluck('name')->values()->all(),
+            'category' => $draft->category?->name,
+            'featured_image_alt' => $draft->featured_image_alt,
+            'featured_image_caption' => $draft->featured_image_caption,
         ];
     }
 
@@ -234,6 +254,8 @@ class WorkspaceManager
      */
     public function mediaMap(Post $post): array
     {
+        $post->loadMissing('media');
+        $draft = $this->workingDraft($post);
         $map = [];
 
         foreach ($post->media as $media) {
@@ -244,21 +266,37 @@ class WorkspaceManager
             ];
         }
 
-        if ($post->body instanceof RichTextDocument) {
-            $this->overlayBodyImageAttributes($post->body->toArray(), $map);
+        if ($draft->body instanceof RichTextDocument) {
+            $this->overlayBodyImageAttributes($draft->body->toArray(), $map);
         }
 
         return $map;
     }
 
-    private function materializeImages(Post $post, string $path): void
-    {
+    /** @param list<int>|null $allowedMediaIds */
+    private function materializeImages(
+        Post $post,
+        string $path,
+        ?array $allowedMediaIds = null,
+    ): void {
+        $draft = $this->workingDraft($post);
         /** @var list<array{source: string, destination: string, manifest: array<string, mixed>}> $images */
         $images = [];
         $totalBytes = 0;
-        $usedMediaIds = $post->body instanceof RichTextDocument ? $post->body->referencedMediaIds() : [];
+        $usedMediaIds = $draft->body instanceof RichTextDocument ? $draft->body->referencedMediaIds() : [];
 
         foreach ($post->media as $media) {
+            if (
+                $allowedMediaIds !== null
+                && ! in_array($media->id, $allowedMediaIds, true)
+            ) {
+                continue;
+            }
+
+            if ($media->path === $draft->featured_image_path) {
+                continue;
+            }
+
             $extension = $this->extensionFor($media->path);
             $filename = 'media-'.$media->id.($extension === '' ? '' : '.'.$extension);
             $source = $this->imageSource($media->path);
@@ -276,19 +314,27 @@ class WorkspaceManager
                 'destination' => $path.'/images/'.$filename,
                 'manifest' => [
                     'file' => 'images/'.$filename,
-                    'role' => 'inline',
+                    'role' => $media->role->value,
+                    'placement' => $media->placement->value,
                     'mediaId' => $media->id,
                     'width' => $media->width,
                     'height' => $media->height,
+                    'displayName' => $media->display_name,
+                    'altText' => $media->alt_text,
+                    'caption' => $media->caption,
+                    'storyPriority' => in_array($media->id, $usedMediaIds, true)
+                        ? 'required'
+                        : $media->story_priority->value,
+                    'storyNotes' => $media->story_notes,
                     'usedInDraft' => in_array($media->id, $usedMediaIds, true),
                 ],
             ];
         }
 
-        if ($post->featured_image_path !== null) {
-            $extension = $this->extensionFor($post->featured_image_path);
+        if ($allowedMediaIds === null && $draft->featured_image_path !== null) {
+            $extension = $this->extensionFor($draft->featured_image_path);
             $filename = 'featured'.($extension === '' ? '' : '.'.$extension);
-            $source = $this->imageSource($post->featured_image_path);
+            $source = $this->imageSource($draft->featured_image_path);
 
             if ($source !== null) {
                 $this->assertImageCount($images);
@@ -301,9 +347,15 @@ class WorkspaceManager
                     'manifest' => [
                         'file' => 'images/'.$filename,
                         'role' => 'featured',
+                        'placement' => 'featured',
                         'mediaId' => null,
                         'width' => null,
                         'height' => null,
+                        'displayName' => null,
+                        'altText' => $draft->featured_image_alt,
+                        'caption' => $draft->featured_image_caption,
+                        'storyPriority' => null,
+                        'storyNotes' => null,
                         'usedInDraft' => false,
                     ],
                 ];
@@ -318,6 +370,18 @@ class WorkspaceManager
         }
 
         $this->writeImageManifest($path, $manifest);
+    }
+
+    private function workingDraft(Post $post): PostDraft
+    {
+        $post->loadMissing('draft');
+        $draft = $post->draft;
+
+        if (! $draft instanceof PostDraft) {
+            throw new RuntimeException('The post does not have a working draft.');
+        }
+
+        return $draft;
     }
 
     private function extensionFor(string $storagePath): string

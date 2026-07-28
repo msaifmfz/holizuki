@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Identity\Models\User;
+use App\Domain\Publishing\Enums\PostMediaStoryPriority;
 use App\Domain\Publishing\Models\Post;
 use App\Domain\Publishing\Models\PostMedia;
 use App\Domain\Publishing\Models\PostRevision;
@@ -35,7 +36,8 @@ test('administrators can upload an inline image with intrinsic dimensions', func
 
     $media = PostMedia::query()->findOrFail($response->json('id'));
 
-    expect($media->post_id)->toBe($post->id);
+    expect($media->post_id)->toBe($post->id)
+        ->and($media->story_priority)->toBe(PostMediaStoryPriority::Required);
     Storage::disk('public')->assertExists($media->path);
 });
 
@@ -66,6 +68,18 @@ test('inline images require a supported image no larger than five megabytes', fu
     $this->assertDatabaseCount('post_media', 0);
 });
 
+test('inline image uploads respect the posts twenty-photo limit', function (): void {
+    $post = Post::factory()->for($this->user, 'author')->create();
+    PostMedia::factory()->count(20)->for($post)->create();
+
+    $this->actingAs($this->user)
+        ->postJson(route('posts.inline-images.store', $post), [
+            'image' => UploadedFile::fake()->image('one-too-many.webp'),
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('image');
+});
+
 test('a post rejects rich text media owned by another post', function (): void {
     $post = Post::factory()->for($this->user, 'author')->create();
     $otherPost = Post::factory()->for($this->user, 'author')->create();
@@ -88,7 +102,7 @@ test('a post rejects rich text media owned by another post', function (): void {
         ->assertUnprocessable()
         ->assertJsonValidationErrors('body');
 
-    expect($post->refresh()->body)->not->toBe($body);
+    expect($post->refresh()->draft?->body?->toArray())->not->toBe($body);
 });
 
 test('the public reader resolves owned image urls and dimensions on the server', function (): void {
@@ -140,7 +154,12 @@ test('media pruning deletes only stale images absent from current and revision b
     ]);
 
     $post->forceFill(['body' => documentWithImage($current->id)])->save();
-    PostRevision::factory()->for($post)->create(['body' => documentWithImage($revision->id)]);
+    PostRevision::factory()->for($post)->create([
+        'snapshot' => [
+            'slug' => $post->slug,
+            'body' => documentWithImage($revision->id),
+        ],
+    ]);
 
     foreach ([$unused, $current, $revision, $recent] as $media) {
         Storage::disk('public')->put($media->path, 'image');

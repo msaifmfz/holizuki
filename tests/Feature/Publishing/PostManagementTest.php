@@ -4,6 +4,7 @@ use App\Domain\Identity\Models\User;
 use App\Domain\Publishing\Enums\PostRevisionEvent;
 use App\Domain\Publishing\Enums\PostStatus;
 use App\Domain\Publishing\Models\Post;
+use App\Domain\Publishing\Models\PostAuthoringJourney;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia;
 
@@ -24,6 +25,10 @@ test('guests cannot access post management', function (): void {
 
 test('administrators can list and create an immediate draft', function (): void {
     Post::factory()->for($this->user, 'author')->create(['title' => 'Existing post']);
+    $this->user->update([
+        'authoring_personality' => 'creative',
+        'authoring_custom_instructions' => 'Prefer vivid examples.',
+    ]);
 
     $this->actingAs($this->user)
         ->get(route('posts.index'))
@@ -40,7 +45,15 @@ test('administrators can list and create an immediate draft', function (): void 
     expect($post->title)->toBe('Untitled post')
         ->and($post->status)->toBe(PostStatus::Draft)
         ->and($post->author_id)->toBe($this->user->id)
-        ->and($post->slug)->toStartWith('untitled-post-');
+        ->and($post->slug)->toStartWith('untitled-post-')
+        ->and(
+            PostAuthoringJourney::query()
+                ->whereBelongsTo($post)
+                ->firstOrFail()
+                ->personality
+                ->value,
+        )
+        ->toBe('creative');
 });
 
 test('administrators can filter posts by editorial status', function (): void {
@@ -140,7 +153,8 @@ test('stale autosaves return a conflict and confirmed overwrite preserves the se
         ->assertOk()
         ->assertJsonPath('lock_version', 3);
 
-    expect($post->refresh()->title)->toBe('Local title')
+    expect($post->refresh()->draft?->title)->toBe('Local title')
+        ->and($post->title)->toBe('Server title')
         ->and($post->revisions()->sole()->title)->toBe('Server title')
         ->and($post->revisions()->sole()->event)->toBe(PostRevisionEvent::ConflictOverwrite);
 });
@@ -219,7 +233,7 @@ test('a manual slug that reduces to empty falls back to a generated slug', funct
         ])
         ->assertOk();
 
-    expect($post->refresh()->slug)->not->toBe('');
+    expect($post->refresh()->draft?->slug)->not->toBe('');
 });
 
 test('search does not treat wildcard characters as wildcards', function (): void {
@@ -265,9 +279,11 @@ test('fields omitted from an autosave payload are preserved', function (): void 
         ])
         ->assertOk();
 
-    expect($post->refresh()->title)->toBe('Kept title')
-        ->and($post->excerpt)->toBe('Kept excerpt')
-        ->and($post->body)->not->toBeNull();
+    $draft = $post->refresh()->draft;
+
+    expect($draft?->title)->toBe('Kept title')
+        ->and($draft?->excerpt)->toBe('Kept excerpt')
+        ->and($draft?->body)->not->toBeNull();
 });
 
 test('array query parameters on the post list are ignored', function (): void {

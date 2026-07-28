@@ -14,12 +14,12 @@ return new class extends Migration
             $table->foreignId('editor_id')->nullable()->constrained('users')->nullOnDelete();
             $table->unsignedInteger('revision_number');
             $table->string('event');
-            $table->string('title')->nullable();
-            $table->string('slug');
-            $table->text('excerpt')->nullable();
-            $table->json('body')->nullable();
-            $table->string('featured_image_path')->nullable();
-            $table->string('featured_image_alt')->nullable();
+            $table->json('snapshot');
+            // Projections of the snapshot. Reference checks (media deletion,
+            // revision pruning, image cleanup) query these instead of decoding
+            // every snapshot, which carries the whole article body.
+            $table->json('referenced_paths');
+            $table->json('referenced_media_ids');
             $table->timestamp('created_at')->useCurrent();
 
             $table->unique(['post_id', 'revision_number']);

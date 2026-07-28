@@ -25,6 +25,7 @@ import NewsletterForm from '@/components/public/newsletter-form';
 import PostGrid from '@/components/public/post-grid';
 import PostTableOfContents from '@/components/public/post-table-of-contents';
 import PublicRichText, {
+    CitationSources,
     ExpandableImage,
 } from '@/components/public/public-rich-text';
 import SectionBand from '@/components/public/section-band';
@@ -219,6 +220,7 @@ export default function PublicPostShow({
                                 value={post.body}
                                 tableOfContents={tableOfContents}
                                 contentKey={`post:${post.id}`}
+                                citations={post.citations}
                             />
                         </div>
 
@@ -230,6 +232,8 @@ export default function PublicPostShow({
                          * unresolved rather than as a deliberate change of width.
                          */}
                         <div className="max-w-[47rem]">
+                            <CitationSources citations={post.citations} />
+
                             {post.tags.length > 0 && (
                                 <nav
                                     className="post-tags mt-14 flex flex-wrap gap-2 border-t border-border pt-6"

@@ -324,10 +324,6 @@ class ClaudeCliRunner implements AgentRunner
     /** @return list<string> */
     private function command(AgentRequest $request): array
     {
-        $tools = array_values(array_unique(array_map(
-            static fn (string $rule): string => Str::before($rule, '('),
-            $request->allowedTools,
-        )));
         $command = [
             config()->string('assistant.binary', 'claude'),
             '--safe-mode',
@@ -336,8 +332,8 @@ class ClaudeCliRunner implements AgentRunner
             '--verbose',
             '--model', $request->model,
             '--max-turns', (string) $request->maxTurns,
-            '--tools', implode(',', $tools),
-            '--allowed-tools', implode(',', $request->allowedTools),
+            '--tools', implode(',', $request->enabledTools),
+            '--allowed-tools', implode(',', $request->allowedToolRules),
             '--permission-mode', 'dontAsk',
             '--setting-sources', '',
             '--settings', '{}',

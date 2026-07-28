@@ -11,7 +11,8 @@ namespace App\Domain\Assistant\ValueObjects;
 final readonly class AgentRequest
 {
     /**
-     * @param  list<string>  $allowedTools
+     * @param  list<string>  $enabledTools
+     * @param  list<string>  $allowedToolRules
      * @param  list<string>  $disallowedTools
      */
     public function __construct(
@@ -22,7 +23,8 @@ final readonly class AgentRequest
         public string $sessionId,
         public bool $resume,
         public string $systemPrompt,
-        public array $allowedTools,
+        public array $enabledTools,
+        public array $allowedToolRules,
         public array $disallowedTools,
         public int $maxTurns,
         public int $timeout,

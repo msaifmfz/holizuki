@@ -3,6 +3,7 @@ import { ArrowLeft, History } from 'lucide-react';
 import { edit } from '@/actions/App/Http/Admin/Controllers/PostController';
 import { index as revisionsIndex } from '@/actions/App/Http/Admin/Controllers/PostRevisionController';
 import PublicRichText, {
+    CitationSources,
     ExpandableImage,
 } from '@/components/public/public-rich-text';
 import { Badge } from '@/components/ui/badge';
@@ -76,7 +77,8 @@ export default function PostPreview({
                         }}
                     />
                 )}
-                <PublicRichText value={post.body} />
+                <PublicRichText value={post.body} citations={post.citations} />
+                <CitationSources citations={post.citations} />
             </article>
         </>
     );

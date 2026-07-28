@@ -216,7 +216,8 @@ final readonly class MarkdownParser
         }
 
         if ($node instanceof HtmlInline) {
-            $tag = strtolower(trim($node->getLiteral()));
+            $html = trim($node->getLiteral());
+            $tag = strtolower($html);
 
             if ($tag === '<u>') {
                 $underline = true;
@@ -225,6 +226,29 @@ final readonly class MarkdownParser
             }
 
             return [];
+        }
+
+        if ($node instanceof Link) {
+            $sourceId = MarkdownDialect::sourceIdFromCitationUrl($node->getUrl());
+
+            if ($sourceId !== null && ! $node->firstChild() instanceof Node) {
+                return [[
+                    'type' => 'citation',
+                    'attrs' => ['sourceId' => $sourceId],
+                ]];
+            }
+
+            if (str_starts_with($node->getUrl(), MarkdownDialect::SOURCE_SCHEME)) {
+                $nodes = [];
+
+                foreach ($node->children() as $child) {
+                    foreach ($this->parseInline($child, $marks, $underline) as $inline) {
+                        $nodes[] = $inline;
+                    }
+                }
+
+                return $nodes;
+            }
         }
 
         $childMarks = match (true) {

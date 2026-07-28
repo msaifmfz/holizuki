@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import PublicRichText, {
+    CitationSources,
     CodeBlock,
     ExpandableImage,
 } from '@/components/public/public-rich-text';
@@ -147,5 +148,70 @@ describe('public rich text renderer', () => {
         );
 
         expect(screen.queryByRole('img')).toBeNull();
+    });
+
+    it('renders numbered citations and a privacy-safe source panel', () => {
+        const value = {
+            type: 'doc',
+            content: [
+                {
+                    type: 'paragraph',
+                    content: [
+                        { type: 'text', text: 'A documented claim' },
+                        {
+                            type: 'citation',
+                            attrs: { sourceId: 9, number: 1 },
+                        },
+                        {
+                            type: 'citation',
+                            attrs: { sourceId: 9, number: 1 },
+                        },
+                        {
+                            type: 'citation',
+                            attrs: { sourceId: 999, number: 2 },
+                        },
+                    ],
+                },
+            ],
+        } satisfies RichTextDocument;
+        const citations = [
+            {
+                number: 1,
+                source_id: 9,
+                title: 'Private field notes',
+                kind: 'document' as const,
+                url: null,
+            },
+            {
+                number: 2,
+                source_id: 12,
+                title: 'Public handbook',
+                kind: 'url' as const,
+                url: 'https://example.com/handbook',
+            },
+        ];
+
+        const { container } = render(
+            <>
+                <PublicRichText value={value} citations={citations} />
+                <CitationSources citations={citations} />
+            </>,
+        );
+
+        expect(
+            screen.getAllByRole('link', {
+                name: 'Citation 1: Private field notes',
+            }),
+        ).toHaveLength(2);
+        expect(container).not.toHaveTextContent('[2][2]');
+        expect(screen.getByText('Private field notes')).toBeVisible();
+        expect(
+            screen.queryByRole('link', { name: 'Private field notes' }),
+        ).toBeNull();
+        expect(
+            screen.getByRole('link', {
+                name: /Public handbook.*opens in a new tab/,
+            }),
+        ).toHaveAttribute('href', 'https://example.com/handbook');
     });
 });

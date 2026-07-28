@@ -11,6 +11,9 @@ enum AssistantTaskType: string
     case Metadata = 'metadata';
     case Outline = 'outline';
     case Images = 'images';
+    case Plans = 'plans';
+    case Draft = 'draft';
+    case Research = 'research';
 
     public function model(): string
     {
@@ -30,7 +33,7 @@ enum AssistantTaskType: string
     {
         return match ($this) {
             self::Chat, self::Outline => true,
-            self::Transform, self::Metadata, self::Images => false,
+            self::Transform, self::Metadata, self::Images, self::Plans, self::Draft, self::Research => false,
         };
     }
 }

@@ -41,6 +41,8 @@ class UserFactory extends Factory
             'avatar_path' => null,
             'bio' => null,
             'social_links' => null,
+            'authoring_personality' => 'friendly',
+            'authoring_custom_instructions' => null,
             'remember_token' => Str::random(10),
             'two_factor_secret' => null,
             'two_factor_recovery_codes' => null,

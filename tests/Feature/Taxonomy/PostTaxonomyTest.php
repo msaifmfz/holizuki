@@ -20,13 +20,15 @@ beforeEach(function (): void {
 /** @return array<string, mixed> */
 function draftPayload(Post $post, array $overrides = []): array
 {
+    $draft = $post->draft()->firstOrFail();
+
     return [
-        'title' => $post->title,
-        'slug' => $post->slug,
+        'title' => $draft->title,
+        'slug' => $draft->slug,
         'slug_is_manual' => false,
-        'excerpt' => $post->excerpt,
-        'body' => $post->body,
-        'featured_image_alt' => $post->featured_image_alt,
+        'excerpt' => $draft->excerpt,
+        'body' => $draft->body,
+        'featured_image_alt' => $draft->featured_image_alt,
         'lock_version' => $post->lock_version,
         ...$overrides,
     ];
@@ -36,7 +38,9 @@ test('the editor receives categories, authors, and tag suggestions', function ()
     $category = Category::factory()->create(['name' => 'Engineering']);
     Tag::factory()->create(['name' => 'Laravel']);
     $post = Post::factory()->for($this->user, 'author')->create(['category_id' => $category->id]);
-    $post->tags()->attach(Tag::factory()->create(['name' => 'Testing']));
+    $testingTag = Tag::factory()->create(['name' => 'Testing']);
+    $post->tags()->attach($testingTag);
+    $post->draft()->firstOrFail()->tags()->attach($testingTag);
 
     $this->actingAs($this->user)
         ->get(route('posts.edit', $post))
@@ -64,8 +68,11 @@ test('saving a draft persists category and author assignment', function (): void
         ->assertOk();
 
     $post->refresh();
-    expect($post->category_id)->toBe($category->id)
-        ->and($post->author_id)->toBe($author->id);
+    $draft = $post->draft()->firstOrFail();
+    expect($draft->category_id)->toBe($category->id)
+        ->and($draft->author_id)->toBe($author->id)
+        ->and($post->category_id)->toBeNull()
+        ->and($post->author_id)->toBe($this->user->id);
 });
 
 test('saving tags creates missing tags, reuses existing ones, and deduplicates', function (): void {
@@ -78,22 +85,27 @@ test('saving tags creates missing tags, reuses existing ones, and deduplicates',
         ]))
         ->assertOk();
 
-    $tagNames = $post->refresh()->tags->pluck('name')->sort()->values()->all();
+    $tagNames = $post->draft()->firstOrFail()->tags->pluck('name')->sort()->values()->all();
     expect($tagNames)->toBe(['Fresh Idea', 'Laravel', 'Queues'])
         ->and(Tag::count())->toBe(3)
-        ->and($post->tags->firstWhere('name', 'Laravel')->id)->toBe($existing->id)
+        ->and($post->draft()->firstOrFail()->tags->firstWhere('name', 'Laravel')->id)->toBe($existing->id)
+        ->and($post->refresh()->tags)->toHaveCount(0)
         ->and(Tag::where('name', 'Fresh Idea')->firstOrFail()->slug)->toBe('fresh-idea');
 });
 
 test('syncing an empty tag list detaches all tags', function (): void {
     $post = Post::factory()->for($this->user, 'author')->create(['lock_version' => 0]);
-    $post->tags()->attach(Tag::factory()->count(2)->create());
+    $tags = Tag::factory()->count(2)->create();
+    $post->tags()->attach($tags);
+    $post->draft()->firstOrFail()->tags()->attach($tags);
 
     $this->actingAs($this->user)
         ->patchJson(route('posts.autosave', $post), draftPayload($post, ['tags' => []]))
         ->assertOk();
 
-    expect($post->refresh()->tags)->toHaveCount(0)->and(Tag::count())->toBe(2);
+    expect($post->draft()->firstOrFail()->tags)->toHaveCount(0)
+        ->and($post->refresh()->tags)->toHaveCount(2)
+        ->and(Tag::count())->toBe(2);
 });
 
 test('a post cannot be published without a category', function (): void {
@@ -140,7 +152,7 @@ test('tag input is limited to ten tags', function (): void {
         ->assertJsonValidationErrors('tags');
 });
 
-test('restoring a revision leaves category and tags untouched', function (): void {
+test('restoring a revision restores its private category and tags snapshot', function (): void {
     $originalCategory = Category::factory()->create();
     $post = Post::factory()->for($this->user, 'author')->create([
         'category_id' => $originalCategory->id,
@@ -167,7 +179,11 @@ test('restoring a revision leaves category and tags untouched', function (): voi
         ->assertOk();
 
     $post->refresh();
-    expect($post->title)->toBe('Original title')
-        ->and($post->category_id)->toBe($newCategory->id)
-        ->and($post->tags->pluck('name')->all())->toBe(['Kept Tag']);
+    $draft = $post->draft()->firstOrFail();
+    expect($draft->title)->toBe('Original title')
+        ->and($draft->category_id)->toBe($originalCategory->id)
+        ->and($draft->tags)->toHaveCount(0)
+        ->and($post->title)->toBe('Original title')
+        ->and($post->category_id)->toBe($originalCategory->id)
+        ->and($post->tags)->toHaveCount(0);
 });

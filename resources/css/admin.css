@@ -163,6 +163,18 @@
         @apply text-foreground underline underline-offset-4;
     }
 
+    .rich-text-content .tiptap [data-citation] {
+        @apply mx-0.5 inline-block cursor-default rounded-sm align-super font-sans text-xs leading-none font-semibold text-primary;
+    }
+
+    .rich-text-content .tiptap [data-citation]::before {
+        content: '[' attr(data-citation-number) ']';
+    }
+
+    .rich-text-content .tiptap [data-citation].ProseMirror-selectednode {
+        @apply ring-2 ring-ring ring-offset-1;
+    }
+
     .rich-text-content .tiptap hr {
         @apply my-8 border-border;
     }

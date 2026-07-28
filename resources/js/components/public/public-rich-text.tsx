@@ -11,7 +11,7 @@ import sql from 'highlight.js/lib/languages/sql';
 import typescript from 'highlight.js/lib/languages/typescript';
 import xml from 'highlight.js/lib/languages/xml';
 import { createLowlight } from 'lowlight';
-import { Check, Copy, Expand } from 'lucide-react';
+import { Check, Copy, Expand, ExternalLink } from 'lucide-react';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { trackAnalyticsEvent } from '@/analytics/tracker';
@@ -26,13 +26,18 @@ import {
 } from '@/components/ui/dialog';
 import {
     getRichTextContent,
+    normalizeCitationSources,
     normalizeTableOfContents,
     safeHeadingId,
     safeImageUrl,
     safeLinkUrl,
 } from '@/lib/public-rich-text';
 import { cn } from '@/lib/utils';
-import type { RichTextDocument, TableOfContentsItem } from '@/types';
+import type {
+    CitationSource,
+    RichTextDocument,
+    TableOfContentsItem,
+} from '@/types';
 
 const lowlight = createLowlight();
 
@@ -69,6 +74,7 @@ type Props = {
     tableOfContents?: TableOfContentsItem[];
     className?: string;
     contentKey?: string;
+    citations?: CitationSource[];
 };
 
 type HighlightNode = {
@@ -84,8 +90,13 @@ export default function PublicRichText({
     tableOfContents,
     className,
     contentKey,
+    citations,
 }: Props) {
     const headings = normalizeTableOfContents(value, tableOfContents);
+    const normalizedCitations = normalizeCitationSources(citations);
+    const citationsBySourceId = new Map(
+        normalizedCitations.map((citation) => [citation.source_id, citation]),
+    );
     let headingIndex = 0;
 
     const renderNode = (node: RichTextDocument, key: string): ReactNode => {
@@ -161,6 +172,32 @@ export default function PublicRichText({
                 return safePositiveInteger(node.attrs?.mediaId) ? (
                     <ExpandableImage key={key} attrs={node.attrs} />
                 ) : null;
+            case 'citation': {
+                const sourceId = safePositiveInteger(node.attrs?.sourceId);
+                const number = safePositiveInteger(node.attrs?.number);
+                const citation = sourceId
+                    ? citationsBySourceId.get(sourceId)
+                    : undefined;
+
+                if (!citation || citation.number !== number) {
+                    return null;
+                }
+
+                return (
+                    <sup
+                        key={key}
+                        className="relative -top-px mx-0.5 font-sans text-[0.7em] leading-none"
+                    >
+                        <a
+                            href={`#citation-source-${citation.number}`}
+                            className="font-semibold no-underline"
+                            aria-label={`Citation ${citation.number}: ${citation.title}`}
+                        >
+                            [{citation.number}]
+                        </a>
+                    </sup>
+                );
+            }
             default:
                 return <Fragment key={key}>{children}</Fragment>;
         }
@@ -170,6 +207,76 @@ export default function PublicRichText({
         <div className={cn('public-rich-text', className)}>
             {value ? renderNode(value, 'root') : null}
         </div>
+    );
+}
+
+export function CitationSources({
+    citations,
+    className,
+}: {
+    citations: CitationSource[];
+    className?: string;
+}) {
+    const normalizedCitations = normalizeCitationSources(citations);
+
+    if (normalizedCitations.length === 0) {
+        return null;
+    }
+
+    return (
+        <section
+            className={cn('mt-14 border-t border-border pt-8', className)}
+            aria-labelledby="article-sources-heading"
+        >
+            <h2
+                id="article-sources-heading"
+                className="font-display text-2xl font-semibold text-foreground"
+            >
+                Sources
+            </h2>
+            <ol className="mt-5 grid list-none gap-4 p-0">
+                {normalizedCitations.map((citation) => (
+                    <li
+                        key={citation.source_id}
+                        id={`citation-source-${citation.number}`}
+                        className="grid scroll-mt-24 grid-cols-[2rem_minmax(0,1fr)] gap-2 text-sm leading-6"
+                    >
+                        <span
+                            className="font-sans font-semibold text-brand-accent"
+                            aria-hidden
+                        >
+                            [{citation.number}]
+                        </span>
+                        <div className="min-w-0">
+                            {citation.url ? (
+                                <a
+                                    href={citation.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-start gap-1 font-medium break-words text-foreground underline decoration-border underline-offset-4 hover:decoration-current"
+                                >
+                                    {citation.title}
+                                    <ExternalLink
+                                        className="mt-1 size-3 shrink-0"
+                                        aria-hidden
+                                    />
+                                    <span className="sr-only">
+                                        (opens in a new tab)
+                                    </span>
+                                </a>
+                            ) : (
+                                <span className="font-medium text-foreground">
+                                    {citation.title}
+                                </span>
+                            )}
+                            <p className="text-xs text-muted-foreground">
+                                {citationKindLabel(citation.kind)}
+                            </p>
+                        </div>
+                    </li>
+                ))}
+            </ol>
+        </section>
     );
 }
 
@@ -431,4 +538,15 @@ function safePositiveInteger(value: unknown): number | undefined {
     const number = Number(value);
 
     return Number.isInteger(number) && number > 0 ? number : undefined;
+}
+
+function citationKindLabel(kind: CitationSource['kind']): string {
+    switch (kind) {
+        case 'url':
+            return 'Web source';
+        case 'document':
+            return 'Document';
+        case 'note':
+            return 'Author note';
+    }
 }

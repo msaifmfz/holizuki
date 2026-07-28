@@ -24,6 +24,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Override;
 
@@ -55,6 +56,7 @@ use Override;
  * @property string|null $search_text
  * @property PostStatus $status
  * @property CarbonInterface|null $scheduled_at
+ * @property int|null $scheduled_revision_id
  * @property CarbonInterface|null $published_at
  * @property CarbonInterface|null $slug_locked_at
  * @property int $lock_version
@@ -67,7 +69,8 @@ use Override;
     'featured_image_path', 'featured_image_alt', 'featured_image_caption', 'featured_at',
     'seo_title', 'meta_description', 'canonical_url', 'og_title', 'og_description', 'og_image_path',
     'noindex', 'content_updated_at',
-    'reading_time_minutes', 'word_count', 'word_count_band', 'search_text', 'status', 'scheduled_at', 'published_at', 'slug_locked_at',
+    'reading_time_minutes', 'word_count', 'word_count_band', 'search_text', 'status', 'scheduled_at', 'scheduled_revision_id',
+    'published_at', 'slug_locked_at',
     'lock_version',
 ])]
 #[UsePolicy(PostPolicy::class)]
@@ -79,6 +82,14 @@ class Post extends Model
     protected static function newFactory(): PostFactory
     {
         return PostFactory::new();
+    }
+
+    #[Override]
+    protected static function booted(): void
+    {
+        static::created(function (Post $post): void {
+            $post->draft()->create(PostDraft::initialAttributes($post));
+        });
     }
 
     /**
@@ -127,10 +138,22 @@ class Post extends Model
         return $this->belongsToMany(Tag::class);
     }
 
+    /** @return HasOne<PostDraft, $this> */
+    public function draft(): HasOne
+    {
+        return $this->hasOne(PostDraft::class);
+    }
+
     /** @return HasMany<PostRevision, $this> */
     public function revisions(): HasMany
     {
         return $this->hasMany(PostRevision::class);
+    }
+
+    /** @return BelongsTo<PostRevision, $this> */
+    public function scheduledRevision(): BelongsTo
+    {
+        return $this->belongsTo(PostRevision::class, 'scheduled_revision_id');
     }
 
     /** @return HasMany<PostMedia, $this> */
@@ -148,7 +171,10 @@ class Post extends Model
     /** @param Builder<Post> $query */
     protected function scopeScheduled(Builder $query): void
     {
-        $query->where('status', PostStatus::Draft)->whereNotNull('scheduled_at');
+        $query
+            ->where('status', PostStatus::Draft)
+            ->whereNotNull('scheduled_at')
+            ->whereNotNull('scheduled_revision_id');
     }
 
     /** @param Builder<Post> $query */
@@ -161,7 +187,14 @@ class Post extends Model
         $pattern = '%'.addcslashes($term, '%_\\').'%';
 
         $query->where(function (Builder $builder) use ($pattern): void {
-            $builder->whereLike('title', $pattern)->orWhereLike('slug', $pattern);
+            $builder
+                ->whereLike('title', $pattern)
+                ->orWhereLike('slug', $pattern)
+                ->orWhereHas('draft', function (Builder $draftQuery) use ($pattern): void {
+                    $draftQuery
+                        ->whereLike('title', $pattern)
+                        ->orWhereLike('slug', $pattern);
+                });
         });
     }
 
@@ -218,7 +251,12 @@ class Post extends Model
 
     public function isScheduled(): bool
     {
-        return $this->status === PostStatus::Draft && $this->scheduled_at !== null;
+        return $this->status === PostStatus::Draft
+            && $this->scheduled_at !== null
+            && (
+                ! array_key_exists('scheduled_revision_id', $this->getAttributes())
+                || $this->scheduled_revision_id !== null
+            );
     }
 
     public function isPublished(): bool
@@ -247,6 +285,7 @@ class Post extends Model
     {
         $this->status = PostStatus::Published;
         $this->scheduled_at = null;
+        $this->scheduled_revision_id = null;
         $this->published_at ??= $publishedAt ?? now();
         $this->slug_locked_at ??= now();
         $this->content_updated_at ??= now();
@@ -254,10 +293,11 @@ class Post extends Model
         $this->save();
     }
 
-    public function schedule(CarbonInterface $scheduledAt, User $editor): void
+    public function schedule(CarbonInterface $scheduledAt, PostRevision $revision, User $editor): void
     {
         $this->status = PostStatus::Draft;
         $this->scheduled_at = $scheduledAt;
+        $this->scheduled_revision_id = $revision->id;
         $this->featured_at = null;
         $this->recordEdit($editor);
         $this->save();
@@ -267,6 +307,7 @@ class Post extends Model
     {
         $this->status = PostStatus::Draft;
         $this->scheduled_at = null;
+        $this->scheduled_revision_id = null;
         $this->featured_at = null;
         $this->recordEdit($editor);
         $this->save();
@@ -276,6 +317,7 @@ class Post extends Model
     {
         $this->status = PostStatus::Draft;
         $this->scheduled_at = null;
+        $this->scheduled_revision_id = null;
         $this->featured_at = null;
         $this->recordEdit($editor);
         $this->save();
@@ -319,6 +361,7 @@ class Post extends Model
             'word_count_band' => WordCountBand::class,
             'status' => PostStatus::class,
             'scheduled_at' => 'datetime',
+            'scheduled_revision_id' => 'integer',
             'published_at' => 'datetime',
             'slug_locked_at' => 'datetime',
             'lock_version' => 'integer',

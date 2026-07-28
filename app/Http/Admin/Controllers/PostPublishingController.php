@@ -74,19 +74,21 @@ class PostPublishingController extends Controller
     /** @return array<string, mixed> */
     private function previewData(Post $post, BuildReaderDocument $buildReaderDocument): array
     {
-        $reader = $buildReaderDocument->handle($post);
+        $draft = $post->draft()->firstOrFail();
+        $reader = $buildReaderDocument->forAuthorPreview($post, $draft->body);
 
         return [
             'id' => $post->id,
-            'title' => $post->title ?? 'Untitled post',
-            'excerpt' => $post->excerpt,
+            'title' => $draft->title ?? 'Untitled post',
+            'excerpt' => $draft->excerpt,
             'body' => $reader['document'],
-            'featured_image_url' => $post->featured_image_path === null ? null : Storage::disk('public')->url($post->featured_image_path),
-            'featured_image_alt' => $post->featured_image_alt,
-            'featured_image_caption' => $post->featured_image_caption,
-            'reading_time_minutes' => $post->body?->readingTime() ?? 1,
+            'citations' => $reader['citations'],
+            'featured_image_url' => $draft->featured_image_path === null ? null : Storage::disk('public')->url($draft->featured_image_path),
+            'featured_image_alt' => $draft->featured_image_alt,
+            'featured_image_caption' => $draft->featured_image_caption,
+            'reading_time_minutes' => $draft->body?->readingTime() ?? 1,
             'published_at' => $post->published_at?->toISOString(),
-            'updated_at' => $post->updated_at?->toISOString(),
+            'updated_at' => $draft->updated_at?->toISOString(),
         ];
     }
 }

@@ -95,26 +95,66 @@ final readonly class RichTextDocument implements Arrayable, JsonSerializable
     }
 
     /**
+     * @param  array{alt?: string, caption?: string|null}  $metadata
+     */
+    public function withMediaMetadata(int $mediaId, array $metadata): self
+    {
+        return new self(self::replaceMediaMetadata($this->document, $mediaId, $metadata));
+    }
+
+    /** @return list<int> */
+    public function referencedSourceIds(): array
+    {
+        $sourceIds = [];
+        self::walk(self::stringKeyedNode($this->document), function (array $node) use (&$sourceIds): void {
+            if (($node['type'] ?? null) !== 'citation') {
+                return;
+            }
+
+            $attributes = is_array($node['attrs'] ?? null) ? $node['attrs'] : [];
+            $sourceId = $attributes['sourceId'] ?? null;
+
+            if (is_int($sourceId) && $sourceId > 0) {
+                $sourceIds[] = $sourceId;
+            }
+        });
+
+        return array_values(array_unique($sourceIds));
+    }
+
+    /**
      * Prepare the document for the public renderer. Stored image sources are
-     * ignored; only server-resolved post media may reach the browser.
+     * ignored; only server-resolved post media and citation metadata may
+     * reach the browser.
      *
      * @param  array<int, array{url: string, width: int, height: int}>  $media
-     * @return array{document: array<string, mixed>|null, table_of_contents: list<array{id: string, title: string, level: int}>}
+     * @param  array<int, array{title: string, kind: string, url: string|null}>  $sources
+     * @return array{
+     *     document: array<string, mixed>|null,
+     *     table_of_contents: list<array{id: string, title: string, level: int}>,
+     *     citations: list<array{number: int, source_id: int, title: string, kind: string, url: string|null}>
+     * }
      */
-    public function readerDocument(array $media = []): array
+    public function readerDocument(array $media = [], array $sources = []): array
     {
         $headingCounts = [];
         $tableOfContents = [];
+        $citationNumbers = [];
+        $citations = [];
         $prepared = self::prepareNode(
             self::stringKeyedNode($this->document),
             $media,
+            $sources,
             $headingCounts,
             $tableOfContents,
+            $citationNumbers,
+            $citations,
         );
 
         return [
             'document' => $prepared,
             'table_of_contents' => $tableOfContents,
+            'citations' => $citations,
         ];
     }
 
@@ -163,17 +203,63 @@ final readonly class RichTextDocument implements Arrayable, JsonSerializable
     }
 
     /**
+     * @param  array<mixed>  $node
+     * @param  array{alt?: string, caption?: string|null}  $metadata
+     * @return array<mixed>
+     */
+    private static function replaceMediaMetadata(array $node, int $mediaId, array $metadata): array
+    {
+        if (($node['type'] ?? null) === 'image') {
+            $attributes = $node['attrs'] ?? null;
+
+            if (is_array($attributes) && ($attributes['mediaId'] ?? null) === $mediaId) {
+                if (array_key_exists('alt', $metadata)) {
+                    $attributes['alt'] = $metadata['alt'];
+                }
+
+                if (array_key_exists('caption', $metadata)) {
+                    $attributes['caption'] = $metadata['caption'];
+                }
+
+                $node['attrs'] = $attributes;
+            }
+        }
+
+        $content = $node['content'] ?? null;
+
+        if (! is_array($content)) {
+            return $node;
+        }
+
+        foreach ($content as $index => $child) {
+            if (is_array($child)) {
+                $content[$index] = self::replaceMediaMetadata($child, $mediaId, $metadata);
+            }
+        }
+
+        $node['content'] = $content;
+
+        return $node;
+    }
+
+    /**
      * @param  array<string, mixed>  $node
      * @param  array<int, array{url: string, width: int, height: int}>  $media
+     * @param  array<int, array{title: string, kind: string, url: string|null}>  $sources
      * @param  array<string, int>  $headingCounts
      * @param  list<array{id: string, title: string, level: int}>  $tableOfContents
+     * @param  array<int, int>  $citationNumbers
+     * @param  list<array{number: int, source_id: int, title: string, kind: string, url: string|null}>  $citations
      * @return array<string, mixed>|null
      */
     private static function prepareNode(
         array $node,
         array $media,
+        array $sources,
         array &$headingCounts,
         array &$tableOfContents,
+        array &$citationNumbers,
+        array &$citations,
     ): ?array {
         $type = $node['type'] ?? null;
 
@@ -207,6 +293,35 @@ final readonly class RichTextDocument implements Arrayable, JsonSerializable
             ];
         }
 
+        if ($type === 'citation') {
+            $attributes = is_array($node['attrs'] ?? null) ? $node['attrs'] : [];
+            $sourceId = $attributes['sourceId'] ?? null;
+
+            if (! is_int($sourceId) || ! isset($sources[$sourceId])) {
+                return null;
+            }
+
+            if (! isset($citationNumbers[$sourceId])) {
+                $citationNumbers[$sourceId] = count($citationNumbers) + 1;
+                $source = $sources[$sourceId];
+                $citations[] = [
+                    'number' => $citationNumbers[$sourceId],
+                    'source_id' => $sourceId,
+                    'title' => $source['title'],
+                    'kind' => $source['kind'],
+                    'url' => $source['url'],
+                ];
+            }
+
+            return [
+                'type' => 'citation',
+                'attrs' => [
+                    'sourceId' => $sourceId,
+                    'number' => $citationNumbers[$sourceId],
+                ],
+            ];
+        }
+
         $content = $node['content'] ?? null;
 
         if (is_array($content)) {
@@ -220,8 +335,11 @@ final readonly class RichTextDocument implements Arrayable, JsonSerializable
                 $preparedChild = self::prepareNode(
                     self::stringKeyedNode($child),
                     $media,
+                    $sources,
                     $headingCounts,
                     $tableOfContents,
+                    $citationNumbers,
+                    $citations,
                 );
 
                 if ($preparedChild !== null) {

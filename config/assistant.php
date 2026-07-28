@@ -37,6 +37,9 @@ return [
         'metadata' => env('ASSISTANT_MODEL_METADATA', 'claude-haiku-4-5'),
         'outline' => env('ASSISTANT_MODEL_OUTLINE', 'claude-sonnet-4-6'),
         'images' => env('ASSISTANT_MODEL_IMAGES', 'claude-sonnet-4-6'),
+        'plans' => env('ASSISTANT_MODEL_PLANS', 'claude-sonnet-4-6'),
+        'draft' => env('ASSISTANT_MODEL_DRAFT', 'claude-sonnet-4-6'),
+        'research' => env('ASSISTANT_MODEL_RESEARCH', 'claude-sonnet-4-6'),
     ],
 
     'disallowed_tools' => ['Bash', 'WebFetch', 'WebSearch', 'Task', 'NotebookEdit'],
@@ -47,6 +50,9 @@ return [
         'metadata' => (int) env('ASSISTANT_MAX_TURNS_METADATA', 6),
         'outline' => (int) env('ASSISTANT_MAX_TURNS_OUTLINE', 12),
         'images' => (int) env('ASSISTANT_MAX_TURNS_IMAGES', 8),
+        'plans' => (int) env('ASSISTANT_MAX_TURNS_PLANS', 8),
+        'draft' => (int) env('ASSISTANT_MAX_TURNS_DRAFT', 12),
+        'research' => (int) env('ASSISTANT_MAX_TURNS_RESEARCH', 12),
     ],
 
     'turn_timeout' => (int) env('ASSISTANT_TURN_TIMEOUT', 300),
@@ -73,9 +79,17 @@ return [
         'meta_bytes' => (int) env('ASSISTANT_MAX_META_BYTES', 64 * 1024),
         'outline_bytes' => (int) env('ASSISTANT_MAX_OUTLINE_BYTES', 64 * 1024),
         'diff_blocks' => (int) env('ASSISTANT_MAX_DIFF_BLOCKS', 500),
-        'image_count' => (int) env('ASSISTANT_MAX_IMAGE_COUNT', 20),
+        // The 20 photos a post may hold, plus its featured image.
+        'image_count' => (int) env('ASSISTANT_MAX_IMAGE_COUNT', 21),
         'image_bytes' => (int) env('ASSISTANT_MAX_IMAGE_BYTES', 100 * 1024 * 1024),
+        'source_bytes' => (int) env('ASSISTANT_MAX_SOURCE_BYTES', 100 * 1024 * 1024),
+        // A generated article body. Well past any realistic long-form draft,
+        // and low enough that the structural checks over it stay cheap.
+        'draft_markdown_bytes' => (int) env('ASSISTANT_MAX_DRAFT_MARKDOWN_BYTES', 256 * 1024),
+        'authoring_output_bytes' => (int) env('ASSISTANT_MAX_AUTHORING_OUTPUT_BYTES', 4 * 1024 * 1024),
     ],
+
+    'authoring_job_timeout' => (int) env('ASSISTANT_AUTHORING_JOB_TIMEOUT', 360),
 
     'process' => [
         'path' => env('ASSISTANT_PROCESS_PATH', '/usr/local/bin:/usr/bin:/bin'),

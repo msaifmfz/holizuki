@@ -25,11 +25,12 @@ class PostFeaturedImageController extends Controller
             $request->string('alt_text')->toString(),
             $request->integer('lock_version'),
         );
+        $draft = $updatedPost->draft()->firstOrFail();
 
         return response()->json([
-            'featured_image_url' => Storage::disk('public')->url((string) $updatedPost->featured_image_path),
-            'featured_image_alt' => $updatedPost->featured_image_alt,
-            'featured_image_caption' => $updatedPost->featured_image_caption,
+            'featured_image_url' => Storage::disk('public')->url((string) $draft->featured_image_path),
+            'featured_image_alt' => $draft->featured_image_alt,
+            'featured_image_caption' => $draft->featured_image_caption,
             'lock_version' => $updatedPost->lock_version,
             'updated_at' => $updatedPost->updated_at?->toISOString(),
         ]);

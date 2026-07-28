@@ -24,8 +24,13 @@ class PostTrashController extends Controller
         $search = $request->query('search');
         $search = is_string($search) ? trim($search) : '';
         $query = Post::onlyTrashed()
-            ->select(['id', 'author_id', 'updated_by_id', 'title', 'slug', 'status', 'scheduled_at', 'published_at', 'featured_at', 'deleted_at', 'updated_at'])
-            ->with(['author:id,name', 'lastEditor:id,name'])
+            ->select(['id', 'author_id', 'updated_by_id', 'title', 'slug', 'status', 'scheduled_at', 'scheduled_revision_id', 'published_at', 'featured_at', 'deleted_at', 'updated_at'])
+            ->with([
+                'author:id,name',
+                'lastEditor:id,name',
+                'draft:id,post_id,author_id,title,slug',
+                'draft.author:id,name',
+            ])
             ->search($search)
             ->latest('deleted_at')
             ->orderByDesc('id');

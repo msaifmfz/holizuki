@@ -7,6 +7,7 @@ namespace App\Domain\Assistant\Providers;
 use App\Domain\Assistant\Console\AssistantDoctorCommand;
 use App\Domain\Assistant\Console\PruneAssistantDataCommand;
 use App\Domain\Assistant\Services\AgentRunner;
+use App\Domain\Assistant\Services\AuthoringContextCache;
 use App\Domain\Assistant\Services\BlockDiffer;
 use App\Domain\Assistant\Services\ClaudeCliRunner;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -21,6 +22,9 @@ class AssistantServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(AgentRunner::class, ClaudeCliRunner::class);
+        // One cache per request or queued job, shared by every collaborator
+        // that needs an authoring context during it.
+        $this->app->scoped(AuthoringContextCache::class);
         $this->app->bind(
             BlockDiffer::class,
             fn (): BlockDiffer => new BlockDiffer(

@@ -14,7 +14,7 @@ class ValidRichTextDocument implements ValidationRule
     /** @var list<string> */
     private const array ALLOWED_NODES = [
         'doc', 'paragraph', 'text', 'heading', 'bulletList', 'orderedList', 'listItem',
-        'blockquote', 'codeBlock', 'hardBreak', 'horizontalRule', 'image',
+        'blockquote', 'codeBlock', 'hardBreak', 'horizontalRule', 'image', 'citation',
     ];
 
     /** @var list<string> */
@@ -83,6 +83,13 @@ class ValidRichTextDocument implements ValidationRule
         $marks = $node['marks'] ?? [];
 
         if (! is_array($marks)) {
+            return false;
+        }
+
+        if ($type === 'citation'
+            && (! $this->validCitationAttributes($node['attrs'] ?? null)
+                || $marks !== []
+                || ($node['content'] ?? []) !== [])) {
             return false;
         }
 
@@ -163,5 +170,13 @@ class ValidRichTextDocument implements ValidationRule
             && ($caption === null || (is_string($caption) && Str::length($caption) <= 500))
             && ($width === null || (is_int($width) && $width > 0 && $width <= 10_000))
             && ($height === null || (is_int($height) && $height > 0 && $height <= 10_000));
+    }
+
+    private function validCitationAttributes(mixed $attributes): bool
+    {
+        return is_array($attributes)
+            && array_keys($attributes) === ['sourceId']
+            && is_int($attributes['sourceId'])
+            && $attributes['sourceId'] > 0;
     }
 }

@@ -1,5 +1,5 @@
 import type { SocialLinks } from './auth';
-import type { RichTextDocument } from './post';
+import type { CitationSource, RichTextDocument } from './post';
 
 type PublicTaxonomyRef = {
     name: string;
@@ -36,6 +36,7 @@ export type PublicPostDetail = Omit<PublicPostCard, 'author'> & {
     word_count_band:
         'under_500' | '500_999' | '1000_1499' | '1500_2499' | '2500_plus';
     body: RichTextDocument | null;
+    citations: CitationSource[];
     updated_at: string | null;
     seo_title: string | null;
     tags: PublicTaxonomyRef[];

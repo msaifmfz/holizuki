@@ -46,7 +46,7 @@ test('published posts carry enough headings for a table of contents', function (
         ->each(function (Post $post) use ($buildReaderDocument): void {
             // PostTableOfContents hides itself below three entries, so anything
             // shorter would leave the sidebar untested during local review.
-            expect($buildReaderDocument->handle($post)['table_of_contents'])
+            expect($buildReaderDocument->forReaders($post)['table_of_contents'])
                 ->toHaveCount(3, "{$post->slug} needs three headings");
         });
 });

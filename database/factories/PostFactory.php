@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace Database\Factories;
 
 use App\Domain\Identity\Models\User;
+use App\Domain\Publishing\Actions\CreatePostRevision;
 use App\Domain\Publishing\Actions\RebuildPostMetadata;
+use App\Domain\Publishing\Enums\PostRevisionEvent;
 use App\Domain\Publishing\Enums\PostStatus;
 use App\Domain\Publishing\Models\Post;
+use App\Domain\Publishing\Models\PostDraft;
 use App\Domain\Taxonomy\Models\Category;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Override;
@@ -24,6 +27,20 @@ class PostFactory extends Factory
     public function configure(): static
     {
         return $this->afterCreating(function (Post $post): void {
+            $post->draft()->firstOrCreate([], PostDraft::initialAttributes($post));
+
+            if ($post->scheduled_at !== null && $post->scheduled_revision_id === null) {
+                $revision = resolve(CreatePostRevision::class)->handle(
+                    $post,
+                    editor: null,
+                    event: PostRevisionEvent::Scheduled,
+                );
+
+                Post::withoutTimestamps(function () use ($post, $revision): void {
+                    $post->forceFill(['scheduled_revision_id' => $revision->id])->saveQuietly();
+                });
+            }
+
             resolve(RebuildPostMetadata::class)->handle($post);
         });
     }

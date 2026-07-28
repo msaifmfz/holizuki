@@ -5,6 +5,7 @@ use App\Domain\Assistant\Models\AssistantSession;
 use App\Domain\Assistant\Models\AssistantTurn;
 use App\Domain\Assistant\Services\WorkspaceManager;
 use App\Domain\Identity\Models\User;
+use App\Domain\Publishing\Enums\PostMediaRole;
 use App\Domain\Publishing\Models\Post;
 use App\Domain\Publishing\Models\PostMedia;
 use App\Domain\Taxonomy\Models\Tag;
@@ -43,7 +44,9 @@ test('materialize writes the draft, metadata, and image manifest', function (): 
             ],
         ],
     ]);
-    $post->tags()->attach(Tag::factory()->create(['name' => 'laravel', 'slug' => 'laravel']));
+    $post->draft()->firstOrFail()->tags()->attach(
+        Tag::factory()->create(['name' => 'laravel', 'slug' => 'laravel']),
+    );
 
     Storage::disk('public')->put('posts/'.$post->id.'/inline/pic.webp', 'binary');
     $media = PostMedia::factory()->for($post, 'post')->create(['path' => 'posts/'.$post->id.'/inline/pic.webp']);
@@ -61,19 +64,54 @@ test('materialize writes the draft, metadata, and image manifest', function (): 
         ->and($meta['tags'])->toBe(['laravel']);
 
     $manifest = json_decode(File::get($path.'/images/manifest.json'), true);
-    $inlineEntries = array_values(array_filter($manifest, fn (array $entry): bool => $entry['role'] === 'inline'));
+    $mediaEntries = array_values(array_filter(
+        $manifest,
+        fn (array $entry): bool => $entry['mediaId'] !== null,
+    ));
 
-    expect($inlineEntries)->toHaveCount(1)
-        ->and($inlineEntries[0]['mediaId'])->toBe($media->id)
-        ->and($inlineEntries[0]['usedInDraft'])->toBeFalse()
-        ->and(File::exists($path.'/'.$inlineEntries[0]['file']))->toBeTrue();
+    expect($mediaEntries)->toHaveCount(1)
+        ->and($mediaEntries[0]['mediaId'])->toBe($media->id)
+        ->and($mediaEntries[0]['role'])->toBe('unassigned')
+        ->and($mediaEntries[0]['storyPriority'])->toBe('required')
+        ->and($mediaEntries[0]['usedInDraft'])->toBeFalse()
+        ->and(File::exists($path.'/'.$mediaEntries[0]['file']))->toBeTrue();
+});
+
+test('authoring workspaces contain only the story media IDs in the task context', function (): void {
+    $post = Post::factory()->for($this->user, 'author')->create();
+    $storyPath = 'posts/'.$post->id.'/inline/story.webp';
+    $heroPath = 'posts/'.$post->id.'/inline/old-hero.webp';
+    $featuredPath = 'posts/'.$post->id.'/featured/current.webp';
+    Storage::disk('public')->put($storyPath, 'story');
+    Storage::disk('public')->put($heroPath, 'hero');
+    Storage::disk('public')->put($featuredPath, 'featured');
+    $story = PostMedia::factory()->for($post, 'post')->create(['path' => $storyPath]);
+    PostMedia::factory()->for($post, 'post')->create([
+        'path' => $heroPath,
+        'role' => PostMediaRole::Hero,
+    ]);
+    $post->draft()->update(['featured_image_path' => $featuredPath]);
+    $turn = workspaceTurn($post);
+    $turn->forceFill([
+        'context' => ['authoring_media_ids' => [$story->id]],
+    ])->save();
+    $workspace = resolve(WorkspaceManager::class);
+
+    $workspace->materialize($post->load('media'), $turn);
+    $manifest = json_decode(
+        File::get($workspace->pathFor($post, $turn).'/images/manifest.json'),
+        true,
+    );
+
+    expect($manifest)->toHaveCount(1)
+        ->and($manifest[0]['mediaId'])->toBe($story->id);
 });
 
 test('the media map prefers the src stored in the body', function (): void {
     $post = Post::factory()->for($this->user, 'author')->create();
     $media = PostMedia::factory()->for($post, 'post')->create(['width' => 800, 'height' => 600]);
 
-    $post->forceFill([
+    $post->draft()->update([
         'body' => [
             'type' => 'doc',
             'content' => [[
@@ -81,7 +119,7 @@ test('the media map prefers the src stored in the body', function (): void {
                 'attrs' => ['mediaId' => $media->id, 'src' => '/custom/src.webp', 'alt' => 'Pic', 'caption' => null, 'width' => 800, 'height' => 600],
             ]],
         ],
-    ])->save();
+    ]);
 
     $map = resolve(WorkspaceManager::class)->mediaMap($post->refresh());
 

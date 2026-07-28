@@ -47,7 +47,7 @@ class AssistantImageController extends Controller
         $this->availability->ensureCanStart();
 
         abort_if(
-            $post->media()->doesntExist() && $post->featured_image_path === null,
+            $post->media()->doesntExist() && $post->draft()->value('featured_image_path') === null,
             422,
             'This post has no images to review yet.',
         );

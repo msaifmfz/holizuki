@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Publishing\Actions;
 
 use App\Domain\Publishing\Models\Post;
+use App\Domain\Publishing\Models\PostDraft;
 use App\Domain\Taxonomy\Models\Tag;
 use App\Support\Concerns\ResolvesUniqueSlug;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -21,7 +22,7 @@ class SyncPostTags
      *
      * @param  array<mixed>  $names
      */
-    public function handle(Post $post, array $names): void
+    public function handle(Post|PostDraft $post, array $names): void
     {
         $normalized = [];
 

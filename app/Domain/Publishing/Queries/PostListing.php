@@ -9,15 +9,39 @@ use App\Domain\Publishing\Models\Post;
 
 class PostListing
 {
-    /** @return array<string, mixed> */
+    /**
+     * Authors browse and search their working drafts, so a listing shows draft
+     * values and falls back to the published post only for a post whose draft
+     * has not diverged. Loading the relation here rather than trusting callers
+     * to eager-load it keeps a forgotten `with('draft')` from silently showing
+     * stale published titles.
+     *
+     * @return array<string, mixed>
+     */
     public function summary(Post $post): array
     {
+        $post->loadMissing(['draft.author:id,name']);
+        $draft = $post->draft;
+        $title = $post->title ?? 'Untitled post';
+        $slug = $post->slug;
+        $authorName = $post->author?->name;
+
+        if ($draft !== null) {
+            $title = $draft->title ?? $title;
+            $slug = $draft->slug;
+            $draftAuthor = $draft->author;
+
+            if ($draftAuthor !== null) {
+                $authorName = $draftAuthor->name;
+            }
+        }
+
         return [
             'id' => $post->id,
-            'title' => $post->title ?? 'Untitled post',
-            'slug' => $post->slug,
+            'title' => $title,
+            'slug' => $slug,
             'status' => $post->isScheduled() ? 'scheduled' : $post->status->value,
-            'author' => $post->author?->name,
+            'author' => $authorName,
             'last_editor' => $post->lastEditor?->name,
             'scheduled_at' => $post->scheduled_at?->toISOString(),
             'published_at' => $post->published_at?->toISOString(),

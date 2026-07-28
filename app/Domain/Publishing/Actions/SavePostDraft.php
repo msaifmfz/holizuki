@@ -7,18 +7,17 @@ namespace App\Domain\Publishing\Actions;
 use App\Domain\Identity\Models\User;
 use App\Domain\Publishing\Concerns\ResolvesLockedPost;
 use App\Domain\Publishing\Enums\PostRevisionEvent;
-use App\Domain\Publishing\Enums\PostStatus;
-use App\Domain\Publishing\Events\PostContentUpdated;
 use App\Domain\Publishing\Exceptions\PostEditConflictException;
 use App\Domain\Publishing\Models\Post;
-use App\Support\Concerns\ResolvesUniqueSlug;
+use App\Domain\Publishing\Models\PostDraft;
+use App\Support\ValueObjects\Slug;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
-class SavePost
+final readonly class SavePostDraft
 {
-    use ResolvesLockedPost, ResolvesUniqueSlug;
+    use ResolvesLockedPost;
 
     /** @var list<string> */
     private const array NULLABLE_STRING_FIELDS = [
@@ -27,10 +26,8 @@ class SavePost
     ];
 
     public function __construct(
-        private readonly CreatePostRevision $createRevision,
-        private readonly SyncPostTags $syncTags,
-        private readonly RebuildPostMetadata $rebuildPostMetadata,
-        private readonly RecordSlugChange $recordSlugChange,
+        private CreatePostRevision $createRevision,
+        private SyncPostTags $syncTags,
     ) {}
 
     /**
@@ -43,8 +40,9 @@ class SavePost
         bool $createRevision = false,
         bool $force = false,
     ): Post {
-        $saved = DB::transaction(function () use ($post, $data, $editor, $createRevision, $force): Post {
+        return DB::transaction(function () use ($post, $data, $editor, $createRevision, $force): Post {
             $current = $this->lockedPost($post);
+            $draft = $current->draft()->firstOrFail();
             $expectedVersion = $data['lock_version'] ?? null;
 
             if (! is_numeric($expectedVersion)) {
@@ -56,51 +54,52 @@ class SavePost
                     throw new PostEditConflictException($current->load('lastEditor:id,name'));
                 }
 
-                $this->createRevision->handle($current, $editor, PostRevisionEvent::ConflictOverwrite);
+                $this->createRevision->handle(
+                    $current,
+                    $editor,
+                    PostRevisionEvent::ConflictOverwrite,
+                    $draft->snapshot(),
+                );
             }
 
-            $previousSlug = $current->slug;
-            $current->fill($this->attributes($data, $current));
-            $this->applySlug($current, $data);
+            $draft->fill($this->attributes($data, $draft));
+            $this->applySlug($current, $draft, $data);
+            $draft->save();
 
-            if ($current->isDirty(Post::CONTENT_FIELDS)) {
-                $current->content_updated_at = now();
+            if (array_key_exists('tags', $data)) {
+                $this->syncTags->handle($draft, is_array($data['tags']) ? $data['tags'] : []);
             }
 
             $current->updated_by_id = $editor->id;
             $current->lock_version++;
             $current->save();
 
-            $this->recordSlugChange->handle($current, $previousSlug);
-
-            if (array_key_exists('tags', $data)) {
-                $this->syncTags->handle($current, is_array($data['tags']) ? $data['tags'] : []);
-            }
-
-            $this->rebuildPostMetadata->handle($current);
-
             if ($createRevision) {
-                $this->createRevision->handle($current, $editor, PostRevisionEvent::Saved);
+                $this->createRevision->handle(
+                    $current,
+                    $editor,
+                    PostRevisionEvent::Saved,
+                    $draft->refresh()->snapshot(),
+                );
             }
 
-            return $current->refresh()->load('author:id,name', 'lastEditor:id,name');
+            return $current->refresh()->load([
+                'author:id,name',
+                'lastEditor:id,name',
+                'draft.author:id,name',
+                'draft.tags:id,name',
+            ]);
         });
-
-        if ($saved->status === PostStatus::Published) {
-            event(new PostContentUpdated($saved));
-        }
-
-        return $saved;
     }
 
     /**
-     * Build the fillable attributes from the payload. Omitted keys leave the
-     * stored value untouched, so partial payloads cannot wipe content.
+     * Omitted keys retain their current values, so partial autosaves cannot
+     * clear unrelated draft content.
      *
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
-    private function attributes(array $data, Post $current): array
+    private function attributes(array $data, PostDraft $draft): array
     {
         $attributes = [];
 
@@ -122,13 +121,13 @@ class SavePost
             $attributes['author_id'] = is_numeric($data['author_id']) ? (int) $data['author_id'] : null;
         }
 
-        $slugIsManual = $data['slug_is_manual'] ?? $current->slug_is_manual;
+        $slugIsManual = $data['slug_is_manual'] ?? $draft->slug_is_manual;
 
         if (! is_bool($slugIsManual)) {
             throw new InvalidArgumentException('The manual slug flag must be a boolean.');
         }
 
-        $noindex = $data['noindex'] ?? $current->noindex;
+        $noindex = $data['noindex'] ?? $draft->noindex;
 
         if (! is_bool($noindex)) {
             throw new InvalidArgumentException('The noindex flag must be a boolean.');
@@ -140,27 +139,27 @@ class SavePost
         return $attributes;
     }
 
-    /**
-     * @param  array<string, mixed>  $data
-     */
-    private function applySlug(Post $current, array $data): void
+    /** @param array<string, mixed> $data */
+    private function applySlug(Post $post, PostDraft $draft, array $data): void
     {
-        if (! $current->slug_is_manual && $current->slug_locked_at === null && $current->title !== null) {
-            $current->slug = $this->uniqueSlug($current->title, $current->id);
+        if (! $draft->slug_is_manual && $post->slug_locked_at === null && $draft->title !== null) {
+            $draft->slug = $this->uniqueSlug($draft->title, $post, $draft);
 
             return;
         }
 
-        $slug = $data['slug'] ?? $current->slug;
+        $slug = $data['slug'] ?? $draft->slug;
 
         if (! is_string($slug)) {
             return;
         }
 
         $normalized = Str::slug($slug);
-        $current->slug = $normalized === ''
-            ? $this->uniqueSlug((string) $current->title, $current->id)
-            : $normalized;
+        $draft->slug = $this->uniqueSlug(
+            $normalized === '' ? (string) $draft->title : $normalized,
+            $post,
+            $draft,
+        );
     }
 
     private function nullableString(mixed $value): ?string
@@ -174,8 +173,19 @@ class SavePost
         return $value === '' ? null : $value;
     }
 
-    private function uniqueSlug(string $title, int $postId): string
+    private function uniqueSlug(string $value, Post $post, PostDraft $draft): string
     {
-        return $this->resolveUniqueSlug($title, Post::class, $postId, fallback: 'untitled-post');
+        $base = Slug::fromName($value, 'untitled-post');
+        $candidate = $base;
+        $suffix = 2;
+
+        while (
+            Post::withTrashed()->where('slug', $candidate->value)->whereKeyNot($post->id)->exists()
+            || PostDraft::query()->where('slug', $candidate->value)->whereKeyNot($draft->id)->exists()
+        ) {
+            $candidate = $base->withSuffix($suffix++);
+        }
+
+        return $candidate->value;
     }
 }

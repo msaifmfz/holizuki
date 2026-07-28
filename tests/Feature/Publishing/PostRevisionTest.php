@@ -3,6 +3,7 @@
 use App\Domain\Identity\Models\User;
 use App\Domain\Publishing\Enums\PostStatus;
 use App\Domain\Publishing\Models\Post;
+use App\Domain\Publishing\Models\PostMedia;
 use App\Domain\Publishing\Models\PostRevision;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia;
@@ -21,14 +22,16 @@ test('administrators can browse revision history and preview a revision', functi
     $systemRevision = PostRevision::factory()->for($post)->create([
         'editor_id' => null,
         'revision_number' => 1,
-        'title' => 'System revision',
+        'snapshot' => publishingRevisionSnapshot(['title' => 'System revision']),
     ]);
     $editorRevision = PostRevision::factory()->for($post)->for($this->user, 'editor')->create([
         'revision_number' => 2,
-        'title' => null,
-        'body' => $this->body,
-        'featured_image_path' => 'posts/revisions/preview.webp',
-        'featured_image_alt' => 'Revision preview',
+        'snapshot' => publishingRevisionSnapshot([
+            'title' => null,
+            'body' => $this->body,
+            'featured_image_path' => 'posts/revisions/preview.webp',
+            'featured_image_alt' => 'Revision preview',
+        ]),
     ]);
 
     $this->actingAs($this->user)
@@ -117,7 +120,8 @@ test('restoring a revision replaces editorial content without changing publicati
         ->assertOk()
         ->assertJsonPath('lock_version', 3);
 
-    expect($post->refresh()->title)->toBe('Saved revision')
+    expect($post->refresh()->title)->toBe('Original title')
+        ->and($post->draft?->title)->toBe('Saved revision')
         ->and($post->status)->toBe(PostStatus::Published)
         ->and($post->published_at)->not->toBeNull();
 });
@@ -128,10 +132,56 @@ test('a revision from another post cannot be restored through scoped bindings', 
     $otherRevision = $otherPost->revisions()->create([
         'revision_number' => 1,
         'event' => 'saved',
-        'slug' => $otherPost->slug,
+        'snapshot' => publishingRevisionSnapshot(['slug' => $otherPost->slug]),
     ]);
 
     $this->actingAs($this->user)
         ->postJson(route('posts.revisions.restore', [$post, $otherRevision]), ['lock_version' => 0])
         ->assertNotFound();
+});
+
+/** @return array<string, mixed> */
+function publishingRevisionSnapshot(array $overrides = []): array
+{
+    return [
+        'slug' => 'revision-snapshot',
+        ...$overrides,
+    ];
+}
+
+test('a revision projects the files and media its snapshot references', function (): void {
+    $post = Post::factory()->for($this->user, 'author')->create();
+    $media = PostMedia::factory()->for($post)->create(['width' => 800, 'height' => 600]);
+    $revision = PostRevision::factory()->for($post)->create([
+        'snapshot' => publishingRevisionSnapshot([
+            'featured_image_path' => 'posts/featured.webp',
+            'og_image_path' => 'posts/og.webp',
+            'body' => [
+                'type' => 'doc',
+                'content' => [[
+                    'type' => 'image',
+                    'attrs' => [
+                        'mediaId' => $media->id,
+                        'src' => 'media:'.$media->id,
+                        'alt' => 'An inline image',
+                        'caption' => null,
+                        'width' => 800,
+                        'height' => 600,
+                    ],
+                ]],
+            ],
+        ]),
+    ]);
+
+    // The projection is written from the snapshot, never independently of it,
+    // so reference checks can query it instead of decoding every article body.
+    expect($revision->refresh()->referenced_paths)
+        ->toBe(['posts/featured.webp', 'posts/og.webp'])
+        ->and($revision->referenced_media_ids)->toBe([$media->id])
+        ->and(PostRevision::query()->referencingPath('posts/og.webp')->whereKey($revision->id)->exists())
+        ->toBeTrue()
+        ->and(PostRevision::query()->referencingPath('posts/absent.webp')->exists())->toBeFalse()
+        ->and(PostRevision::query()->referencingMedia($media->id)->whereKey($revision->id)->exists())
+        ->toBeTrue()
+        ->and(PostRevision::query()->referencingMedia($media->id + 1)->exists())->toBeFalse();
 });

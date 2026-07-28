@@ -11,9 +11,12 @@ trait BuildsAutosaveResponse
     /** @return array<string, mixed> */
     protected function autosavePayload(Post $post): array
     {
+        $post->loadMissing('draft');
+        $draftSlug = $post->draft?->slug;
+
         return [
             'lock_version' => $post->lock_version,
-            'slug' => $post->slug,
+            'slug' => $draftSlug ?? $post->slug,
             'updated_at' => (string) $post->updated_at?->toISOString(),
             'last_editor' => $post->lastEditor?->name,
         ];

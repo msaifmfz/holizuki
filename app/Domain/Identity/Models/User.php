@@ -31,6 +31,8 @@ use Override;
  * @property string|null $avatar_path
  * @property string|null $bio
  * @property array<string, string>|null $social_links
+ * @property string $authoring_personality
+ * @property string|null $authoring_custom_instructions
  * @property string|null $two_factor_secret
  * @property string|null $two_factor_recovery_codes
  * @property CarbonInterface|null $two_factor_confirmed_at
@@ -38,7 +40,10 @@ use Override;
  * @property CarbonInterface|null $created_at
  * @property CarbonInterface|null $updated_at
  */
-#[Fillable(['name', 'email', 'password', 'author_slug', 'avatar_path', 'bio', 'social_links'])]
+#[Fillable([
+    'name', 'email', 'password', 'author_slug', 'avatar_path', 'bio', 'social_links',
+    'authoring_personality', 'authoring_custom_instructions',
+])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
 {
@@ -74,6 +79,15 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
             UserRole::Administrator => false,
             UserRole::Reader => true,
         };
+    }
+
+    /** @return array{personality: string, custom_instructions: string|null} */
+    public function authoringPreferences(): array
+    {
+        return [
+            'personality' => $this->authoring_personality,
+            'custom_instructions' => $this->authoring_custom_instructions,
+        ];
     }
 
     /** @return Attribute<string|null, never> */

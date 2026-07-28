@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
 /**
- * Turns an accepted proposal into a SavePost payload, re-resolved against
+ * Turns an accepted proposal into a SavePostDraft payload, re-resolved against
  * the post's *current* state — never the state the proposal was computed
  * from. If the touched region no longer exists the change is stale and the
  * author is asked to re-run the assistant instead of silently clobbering.
@@ -31,6 +31,7 @@ class ResolveChangePayload
     public function handle(AssistantChange $change, Post $post): array
     {
         $payload = $change->payload;
+        $draft = $post->draft()->firstOrFail();
 
         if ($change->type === AssistantChangeType::Body) {
             return [
@@ -42,7 +43,7 @@ class ResolveChangePayload
         if ($change->type === AssistantChangeType::Tags) {
             $old = $this->validatedTags($payload['old'] ?? null);
             $new = $this->validatedTags($payload['new'] ?? null);
-            $current = $post->tags()->pluck('name')->all();
+            $current = $draft->tags()->pluck('name')->all();
 
             if ($this->canonicalTags($old) !== $this->canonicalTags($current)) {
                 throw StaleChangeException::becauseContentMoved();
@@ -57,7 +58,7 @@ class ResolveChangePayload
             throw StaleChangeException::becauseContentMoved();
         }
 
-        $current = $post->getAttribute($attribute);
+        $current = $draft->getAttribute($attribute);
         $old = $payload['old'] ?? null;
 
         // Empty string and null both mean "unset" across the meta.json boundary.

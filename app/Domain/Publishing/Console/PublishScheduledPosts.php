@@ -23,12 +23,20 @@ class PublishScheduledPosts extends Command
         Post::query()
             ->where('status', PostStatus::Draft)
             ->whereNotNull('scheduled_at')
+            ->whereNotNull('scheduled_revision_id')
             ->where('scheduled_at', '<=', now())
             ->orderBy('id')
             ->chunkById(100, function (Collection $posts) use ($publishPost, &$published): void {
                 foreach ($posts as $post) {
-                    $publishPost->handle($post, editor: null, publishedAt: $post->scheduled_at);
-                    $published++;
+                    $result = $publishPost->publishScheduled(
+                        $post,
+                        editor: null,
+                        publishedAt: $post->scheduled_at,
+                    );
+
+                    if ($result->isPublished()) {
+                        $published++;
+                    }
                 }
             });
 

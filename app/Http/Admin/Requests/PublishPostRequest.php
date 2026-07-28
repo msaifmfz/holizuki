@@ -28,6 +28,7 @@ class PublishPostRequest extends AuthenticatedRequest
     public function validationData(): array
     {
         $post = $this->boundPost();
+        $draft = $post->draft()->firstOrFail();
 
         $data = [];
 
@@ -36,13 +37,13 @@ class PublishPostRequest extends AuthenticatedRequest
                 $data[$key] = $value;
             }
         }
-        $data['title'] = $post->title;
-        $data['slug'] = $post->slug;
-        $data['excerpt'] = $post->excerpt;
-        $data['body'] = $post->body?->toArray();
-        $data['featured_image_path'] = $post->featured_image_path;
-        $data['featured_image_alt'] = $post->featured_image_alt;
-        $data['category_id'] = $post->category_id;
+        $data['title'] = $draft->title;
+        $data['slug'] = $draft->slug;
+        $data['excerpt'] = $draft->excerpt;
+        $data['body'] = $draft->body?->toArray();
+        $data['featured_image_path'] = $draft->featured_image_path;
+        $data['featured_image_alt'] = $draft->featured_image_alt;
+        $data['category_id'] = $draft->category_id;
 
         return $data;
     }

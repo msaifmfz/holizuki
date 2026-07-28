@@ -58,13 +58,13 @@ test('accepting a scalar change saves it through the post pipeline', function ()
     ]);
     $previousVersion = $this->post->lock_version;
     $category = Category::factory()->create();
-    $this->post->forceFill([
+    $this->post->draft()->update([
         'slug_is_manual' => true,
         'category_id' => $category->id,
         'author_id' => $this->user->id,
         'canonical_url' => 'https://example.com/canonical',
         'noindex' => true,
-    ])->save();
+    ]);
 
     $response = $this->actingAs($this->user)
         ->postJson(route('posts.assistant.changes.accept', [$this->post, $change]));
@@ -102,7 +102,7 @@ test('accepting a scalar change saves it through the post pipeline', function ()
             ],
         ]);
 
-    expect($this->post->refresh()->excerpt)->toBe('A crisp new excerpt.')
+    expect($this->post->draft()->value('excerpt'))->toBe('A crisp new excerpt.')
         ->and($change->refresh()->status)->toBe(AssistantChangeStatus::Accepted)
         ->and($change->decided_at)->not->toBeNull();
 });
@@ -124,7 +124,7 @@ test('accepting is blocked while the session has an active turn', function (): v
         ->postJson(route('posts.assistant.changes.accept', [$this->post, $change]))
         ->assertConflict();
 
-    expect($this->post->refresh()->excerpt)->toBe('Original excerpt.')
+    expect($this->post->draft()->value('excerpt'))->toBe('Original excerpt.')
         ->and($change->refresh()->status)->toBe(AssistantChangeStatus::Proposed)
         ->and($activeTurn->refresh()->status)->toBe(AssistantTurnStatus::Running);
 });
@@ -140,11 +140,12 @@ test('accepting a tags change syncs tag names', function (): void {
         ->assertSuccessful()
         ->assertJsonPath('post.tags', ['laravel', 'queues']);
 
-    expect($this->post->tags()->pluck('name')->all())->toEqualCanonicalizing(['laravel', 'queues']);
+    expect($this->post->draft()->firstOrFail()->tags()->pluck('name')->all())
+        ->toEqualCanonicalizing(['laravel', 'queues']);
 });
 
 test('a tags change is stale when the author changed the current tags', function (): void {
-    $this->post->tags()->create(['name' => 'Current', 'slug' => 'current']);
+    $this->post->draft()->firstOrFail()->tags()->create(['name' => 'Current', 'slug' => 'current']);
     $change = makeChange($this->post, $this->turn, AssistantChangeType::Tags, [
         'old' => [],
         'new' => ['replacement'],
@@ -155,7 +156,7 @@ test('a tags change is stale when the author changed the current tags', function
         ->assertConflict()
         ->assertJsonPath('code', 'stale_change');
 
-    expect($this->post->tags()->pluck('name')->all())->toBe(['Current']);
+    expect($this->post->draft()->firstOrFail()->tags()->pluck('name')->all())->toBe(['Current']);
 });
 
 test('a tags change cannot bypass publishing limits', function (): void {
@@ -168,7 +169,7 @@ test('a tags change cannot bypass publishing limits', function (): void {
         ->postJson(route('posts.assistant.changes.accept', [$this->post, $change]))
         ->assertConflict();
 
-    expect($this->post->tags()->count())->toBe(0);
+    expect($this->post->draft()->firstOrFail()->tags()->count())->toBe(0);
 });
 
 test('a scalar change is stale when the author already edited the field', function (): void {
@@ -182,7 +183,7 @@ test('a scalar change is stale when the author already edited the field', functi
         ->assertConflict()
         ->assertJsonPath('change.status', 'stale');
 
-    expect($this->post->refresh()->excerpt)->toBe('Original excerpt.');
+    expect($this->post->draft()->value('excerpt'))->toBe('Original excerpt.');
 });
 
 test('accepting a body hunk splices it into the current body', function (): void {
@@ -197,7 +198,7 @@ test('accepting a body hunk splices it into the current body', function (): void
         ->postJson(route('posts.assistant.changes.accept', [$this->post, $change]))
         ->assertSuccessful();
 
-    $body = $this->post->refresh()->body?->plainText();
+    $body = $this->post->draft()->firstOrFail()->body?->plainText();
 
     expect($body)->toContain('A much sharper paragraph.')
         ->not->toContain('Old paragraph.')
@@ -230,7 +231,7 @@ test('an insertion hunk lands after its anchor', function (): void {
         ->postJson(route('posts.assistant.changes.accept', [$this->post, $change]))
         ->assertSuccessful();
 
-    expect($this->post->refresh()->body?->plainText())
+    expect($this->post->draft()->firstOrFail()->body?->plainText())
         ->toContain('Old paragraph. Freshly inserted paragraph. Closing thoughts.');
 });
 
@@ -263,7 +264,7 @@ test('rejecting a change leaves the post untouched', function (): void {
         ->assertSuccessful()
         ->assertJsonPath('change.status', 'rejected');
 
-    expect($this->post->refresh()->excerpt)->toBe('Original excerpt.');
+    expect($this->post->draft()->value('excerpt'))->toBe('Original excerpt.');
 });
 
 test('an already decided change cannot be decided again', function (): void {
@@ -291,7 +292,7 @@ test('a change belonging to another post is not found', function (): void {
 });
 
 test('a duplicated hunk resolves through its anchor', function (): void {
-    $this->post->forceFill([
+    $this->post->draft()->update([
         'body' => [
             'type' => 'doc',
             'content' => [
@@ -300,7 +301,7 @@ test('a duplicated hunk resolves through its anchor', function (): void {
                 ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Repeated.']]],
             ],
         ],
-    ])->save();
+    ]);
 
     $change = makeChange($this->post, $this->turn, AssistantChangeType::Body, [
         'old_blocks' => 'Repeated.',
@@ -313,12 +314,12 @@ test('a duplicated hunk resolves through its anchor', function (): void {
         ->postJson(route('posts.assistant.changes.accept', [$this->post, $change]))
         ->assertSuccessful();
 
-    expect($this->post->refresh()->body?->plainText())
+    expect($this->post->draft()->firstOrFail()->body?->plainText())
         ->toBe('Repeated. Divider. Replaced once.');
 });
 
 test('an ambiguous duplicated hunk without a usable anchor is stale', function (): void {
-    $this->post->forceFill([
+    $this->post->draft()->update([
         'body' => [
             'type' => 'doc',
             'content' => [
@@ -326,7 +327,7 @@ test('an ambiguous duplicated hunk without a usable anchor is stale', function (
                 ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Repeated.']]],
             ],
         ],
-    ])->save();
+    ]);
 
     $change = makeChange($this->post, $this->turn, AssistantChangeType::Body, [
         'old_blocks' => 'Repeated.',
@@ -352,11 +353,11 @@ test('a body hunk is stale when its trailing anchor moved', function (): void {
         ->postJson(route('posts.assistant.changes.accept', [$this->post, $change]))
         ->assertConflict();
 
-    expect($this->post->refresh()->body?->plainText())->toContain('Old paragraph.');
+    expect($this->post->draft()->firstOrFail()->body?->plainText())->toContain('Old paragraph.');
 });
 
 test('an insertion into an empty body appends the new content', function (): void {
-    $this->post->forceFill(['body' => null])->save();
+    $this->post->draft()->update(['body' => null]);
 
     $change = makeChange($this->post, $this->turn, AssistantChangeType::Body, [
         'old_blocks' => '',
@@ -369,7 +370,7 @@ test('an insertion into an empty body appends the new content', function (): voi
         ->postJson(route('posts.assistant.changes.accept', [$this->post, $change]))
         ->assertSuccessful();
 
-    expect($this->post->refresh()->body?->plainText())->toBe('The very first paragraph.');
+    expect($this->post->draft()->firstOrFail()->body?->plainText())->toBe('The very first paragraph.');
 });
 
 test('an empty insertion hunk is stale', function (): void {

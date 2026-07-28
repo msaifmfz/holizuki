@@ -33,6 +33,7 @@ function cliRequest(
     int $idleTimeout = 5,
     int $maxStdoutBytes = 1_000_000,
     bool $noSessionPersistence = false,
+    bool $resume = false,
 ): AgentRequest {
     return new AgentRequest(
         prompt: 'Improve the intro paragraph.',
@@ -40,9 +41,10 @@ function cliRequest(
         workspacePath: $workspace,
         model: 'claude-haiku-4-5',
         sessionId: '22222222-2222-2222-2222-222222222222',
-        resume: false,
+        resume: $resume,
         systemPrompt: 'You are a test.',
-        allowedTools: ['Read(runs/test-run/**)', 'Edit(runs/test-run/draft.md)'],
+        enabledTools: ['Read', 'Edit', 'Write'],
+        allowedToolRules: ['Read(runs/test-run/**)', 'Edit(runs/test-run/draft.md)'],
         disallowedTools: ['Bash'],
         maxTurns: 3,
         timeout: $timeout,
@@ -91,7 +93,26 @@ test('the process runs at the stable root with hardened flags', function (): voi
         ->and($arguments)->toContain('--disable-slash-commands')
         ->and($arguments)->toContain('--strict-mcp-config')
         ->and($arguments)->toContain('--no-session-persistence')
+        ->and($arguments)->toContain("--tools\nRead,Edit,Write\n")
+        ->and($arguments)->toContain("--allowed-tools\nRead(runs/test-run/**),Edit(runs/test-run/draft.md)\n")
+        ->and($arguments)->not->toContain('Write(')
+        ->and($arguments)->toContain("--disallowed-tools\nBash\n")
+        ->and($arguments)->toContain("--session-id\n22222222-2222-2222-2222-222222222222\n")
         ->and($arguments)->not->toContain('--append-system-prompt');
+});
+
+test('a resumed request keeps the existing Claude session', function (): void {
+    config()->set('assistant.binary', base_path('tests/Fixtures/fake-claude'));
+
+    iterator_to_array(resolve(ClaudeCliRunner::class)->stream(
+        cliRequest($this->root, $this->workspace, resume: true),
+    ), false);
+
+    $arguments = File::get($this->root.'/arguments.txt');
+
+    expect($arguments)
+        ->toContain("--resume\n22222222-2222-2222-2222-222222222222\n")
+        ->not->toContain('--session-id');
 });
 
 test('the child receives OAuth but no application or API credentials', function (): void {

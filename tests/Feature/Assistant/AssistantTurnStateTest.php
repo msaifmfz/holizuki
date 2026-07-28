@@ -160,7 +160,7 @@ test('drafting is rejected before a persisted outline is ready', function (): vo
 
 test('turn snapshots reload the post after a concurrent autosave', function (): void {
     $stalePost = $this->post->fresh();
-    Post::query()->whereKey($this->post->id)->update(['title' => 'Latest autosaved title']);
+    $this->post->draft()->update(['title' => 'Latest autosaved title']);
 
     $turn = resolve(StartAssistantTurn::class)->handle(
         $stalePost,

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Http\Admin\Requests;
 
-use App\Domain\Publishing\Enums\PostStatus;
 use App\Http\Admin\Concerns\PostValidationRules;
 use App\Http\AuthenticatedRequest;
 use Illuminate\Support\Str;
@@ -39,17 +38,7 @@ class UpdatePostRequest extends AuthenticatedRequest
     /** @return array<string, mixed> */
     public function rules(): array
     {
-        $post = $this->boundPost();
-
-        if ($post->status === PostStatus::Published || $post->isScheduled()) {
-            return [
-                ...$this->publishRules($post),
-                'slug_is_manual' => ['required', 'boolean'],
-                'force' => ['sometimes', 'boolean'],
-            ];
-        }
-
-        return $this->draftRules($post);
+        return $this->draftRules($this->boundPost());
     }
 
     /** @return array<string, mixed> */
@@ -64,10 +53,8 @@ class UpdatePostRequest extends AuthenticatedRequest
             }
         }
 
-        $data['featured_image_path'] = $this->boundPost()->featured_image_path;
-
         if (! array_key_exists('category_id', $data)) {
-            $data['category_id'] = $this->boundPost()->category_id;
+            $data['category_id'] = $this->boundPost()->draft()->value('category_id');
         }
 
         return $data;

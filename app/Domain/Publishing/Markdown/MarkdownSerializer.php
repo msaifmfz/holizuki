@@ -206,6 +206,19 @@ final class MarkdownSerializer
                 continue;
             }
 
+            if ($type === 'citation') {
+                $attributes = is_array($node['attrs'] ?? null) ? $node['attrs'] : [];
+                $sourceId = $attributes['sourceId'] ?? null;
+
+                if (is_int($sourceId) && $sourceId > 0) {
+                    $rendered .= MarkdownDialect::citation($sourceId);
+                }
+
+                $index++;
+
+                continue;
+            }
+
             if ($type !== 'text') {
                 $index++;
 

@@ -8,37 +8,32 @@ use App\Domain\Identity\Models\User;
 use App\Domain\Publishing\Enums\PostRevisionEvent;
 use App\Domain\Publishing\Models\Post;
 use App\Domain\Publishing\Models\PostRevision;
+use App\Domain\Publishing\ValueObjects\PostRevisionSnapshot;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class CreatePostRevision
 {
-    public function handle(Post $post, ?User $editor, PostRevisionEvent $event): PostRevision
-    {
+    public function handle(
+        Post $post,
+        ?User $editor,
+        PostRevisionEvent $event,
+        ?PostRevisionSnapshot $snapshot = null,
+    ): PostRevision {
         $latestRevisionNumber = $post->revisions()->max('revision_number');
 
         if (! is_int($latestRevisionNumber)) {
             $latestRevisionNumber = 0;
         }
 
+        $snapshot ??= $post->draft()->firstOrFail()->snapshot();
+
         $revision = $post->revisions()->create([
             'editor_id' => $editor?->id,
             'revision_number' => $latestRevisionNumber + 1,
             'event' => $event,
-            'title' => $post->title,
-            'slug' => $post->slug,
-            'excerpt' => $post->excerpt,
-            'body' => $post->body,
-            'featured_image_path' => $post->featured_image_path,
-            'featured_image_alt' => $post->featured_image_alt,
-            'featured_image_caption' => $post->featured_image_caption,
-            'seo_title' => $post->seo_title,
-            'meta_description' => $post->meta_description,
-            'canonical_url' => $post->canonical_url,
-            'og_title' => $post->og_title,
-            'og_description' => $post->og_description,
-            'og_image_path' => $post->og_image_path,
-            'noindex' => $post->noindex,
+            'snapshot' => $snapshot,
         ]);
 
         $this->prune($post, $revision->revision_number);
@@ -52,18 +47,32 @@ class CreatePostRevision
         $limit = max(1, is_int($configuredLimit) ? $configuredLimit : 50);
         $oldRevisions = $post->revisions()
             ->where('revision_number', '<=', $latestRevisionNumber - $limit)
-            ->get(['id', 'featured_image_path']);
+            ->when(
+                $post->scheduled_revision_id !== null,
+                fn (Builder $query): Builder => $query->whereKeyNot($post->scheduled_revision_id),
+            )
+            ->get(['id', 'referenced_paths']);
 
         if ($oldRevisions->isEmpty()) {
             return;
         }
 
-        $paths = $oldRevisions->map(fn (PostRevision $revision): ?string => $revision->featured_image_path)->filter()->unique();
+        $paths = $oldRevisions
+            ->flatMap(fn (PostRevision $revision): array => $revision->referenced_paths)
+            ->unique();
         $post->revisions()->whereKey($oldRevisions->modelKeys())->delete();
 
+        $draft = $post->draft()->firstOrFail();
+        $livePaths = array_filter([
+            $post->featured_image_path,
+            $post->og_image_path,
+            $draft->featured_image_path,
+            $draft->og_image_path,
+        ], static fn (?string $path): bool => $path !== null);
+
         $deletablePaths = $paths
-            ->reject(fn (string $path): bool => $path === $post->featured_image_path
-                || $post->revisions()->where('featured_image_path', $path)->exists())
+            ->reject(fn (string $path): bool => in_array($path, $livePaths, true)
+                || $post->revisions()->referencingPath($path)->exists())
             ->values()
             ->all();
 

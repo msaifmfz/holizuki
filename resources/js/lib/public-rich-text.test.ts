@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     buildTableOfContents,
     getRichTextContent,
+    normalizeCitationSources,
     normalizeTableOfContents,
     safeHeadingId,
     safeImageUrl,
@@ -89,5 +90,48 @@ describe('public rich text helpers', () => {
         expect(safeHeadingId('section:one')).toBe('section:one');
         expect(safeHeadingId('bad id')).toBeNull();
         expect(safeHeadingId('" onclick="alert(1)')).toBeNull();
+    });
+
+    it('orders and deduplicates citation metadata while stripping unsafe links', () => {
+        expect(
+            normalizeCitationSources([
+                {
+                    number: 2,
+                    source_id: 20,
+                    title: '  Second  ',
+                    kind: 'url',
+                    url: 'javascript:alert(1)',
+                },
+                {
+                    number: 1,
+                    source_id: 10,
+                    title: 'First',
+                    kind: 'document',
+                    url: 'https://example.com/private.pdf',
+                },
+                {
+                    number: 3,
+                    source_id: 10,
+                    title: 'Duplicate source',
+                    kind: 'note',
+                    url: null,
+                },
+            ]),
+        ).toEqual([
+            {
+                number: 1,
+                source_id: 10,
+                title: 'First',
+                kind: 'document',
+                url: null,
+            },
+            {
+                number: 2,
+                source_id: 20,
+                title: 'Second',
+                kind: 'url',
+                url: null,
+            },
+        ]);
     });
 });

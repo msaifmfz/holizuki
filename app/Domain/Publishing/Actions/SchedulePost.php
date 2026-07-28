@@ -22,12 +22,17 @@ class SchedulePost
     {
         $scheduled = DB::transaction(function () use ($post, $editor, $scheduledAt, $expectedVersion): Post {
             $current = $this->lockedPost($post, $expectedVersion);
+            $snapshot = $current->draft()->firstOrFail()->snapshot();
+            $revision = $this->createRevision->handle(
+                $current,
+                $editor,
+                PostRevisionEvent::Scheduled,
+                $snapshot,
+            );
 
-            $current->schedule($scheduledAt, $editor);
+            $current->schedule($scheduledAt, $revision, $editor);
 
-            $this->createRevision->handle($current, $editor, PostRevisionEvent::Scheduled);
-
-            return $current->refresh();
+            return $current->refresh()->load('scheduledRevision');
         });
 
         event(new PostScheduled($scheduled));

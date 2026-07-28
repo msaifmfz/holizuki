@@ -9,12 +9,29 @@ use Illuminate\Support\Str;
 /**
  * Shared vocabulary for the markdown rendition of a RichTextDocument. The
  * dialect is CommonMark plus strikethrough, `<u>` inline HTML for underline,
- * and a `media:{id}` URL scheme so image nodes keep pointing at PostMedia
- * rows across a serialize/parse round trip.
+ * a `media:{id}` URL scheme so image nodes keep pointing at PostMedia rows,
+ * and an empty link with a `source:{id}` destination for citation references
+ * across a serialize/parse round trip.
  */
 final class MarkdownDialect
 {
     public const string MEDIA_SCHEME = 'media:';
+
+    public const string SOURCE_SCHEME = 'source:';
+
+    public static function citation(int $sourceId): string
+    {
+        return '[]('.self::SOURCE_SCHEME.$sourceId.')';
+    }
+
+    public static function sourceIdFromCitationUrl(string $url): ?int
+    {
+        if (! str_starts_with($url, self::SOURCE_SCHEME)) {
+            return null;
+        }
+
+        return self::positiveInteger(substr($url, strlen(self::SOURCE_SCHEME)));
+    }
 
     /**
      * Canonical outermost-to-innermost nesting order for marks. Serialization
@@ -62,8 +79,22 @@ final class MarkdownDialect
             return null;
         }
 
-        $identifier = substr($url, strlen(self::MEDIA_SCHEME));
+        return self::positiveInteger(substr($url, strlen(self::MEDIA_SCHEME)));
+    }
 
-        return Str::isMatch('/\A\d+\z/', $identifier) && (int) $identifier > 0 ? (int) $identifier : null;
+    private static function positiveInteger(string $identifier): ?int
+    {
+        if (! Str::isMatch('/\A[1-9]\d*\z/', $identifier)) {
+            return null;
+        }
+
+        $maximum = (string) PHP_INT_MAX;
+
+        if (strlen($identifier) > strlen($maximum)
+            || (strlen($identifier) === strlen($maximum) && strcmp($identifier, $maximum) > 0)) {
+            return null;
+        }
+
+        return (int) $identifier;
     }
 }

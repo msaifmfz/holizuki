@@ -4,6 +4,7 @@ use App\Domain\Identity\Models\User;
 use App\Domain\Publishing\Actions\CreatePostRevision;
 use App\Domain\Publishing\Enums\PostRevisionEvent;
 use App\Domain\Publishing\Models\Post;
+use App\Domain\Publishing\Models\PostRevision;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -40,7 +41,7 @@ test('administrators can upload, replace, and remove a featured image', function
         ])->assertOk()
         ->assertJsonPath('featured_image_alt', 'Moonlit mountains');
 
-    $firstPath = $post->refresh()->featured_image_path;
+    $firstPath = $post->refresh()->draft?->featured_image_path;
     Storage::disk('public')->assertExists((string) $firstPath);
     expect($response->json('lock_version'))->toBe(1);
 
@@ -52,7 +53,9 @@ test('administrators can upload, replace, and remove a featured image', function
         ])->assertOk()
         ->assertJsonPath('lock_version', 2);
 
-    expect($post->revisions()->where('featured_image_path', $firstPath)->exists())->toBeTrue();
+    expect($post->revisions()->get()->contains(
+        fn (PostRevision $revision): bool => $revision->featured_image_path === $firstPath,
+    ))->toBeTrue();
     Storage::disk('public')->assertExists((string) $firstPath);
 
     $this->actingAs($this->user)
@@ -61,8 +64,8 @@ test('administrators can upload, replace, and remove a featured image', function
         ->assertJsonPath('featured_image_url', null)
         ->assertJsonPath('featured_image_caption', null);
 
-    expect($post->refresh()->featured_image_path)->toBeNull()
-        ->and($post->featured_image_caption)->toBeNull();
+    expect($post->refresh()->draft?->featured_image_path)->toBeNull()
+        ->and($post->draft?->featured_image_caption)->toBeNull();
 });
 
 test('permanent deletion removes current and historical featured images', function (): void {
@@ -70,8 +73,10 @@ test('permanent deletion removes current and historical featured images', functi
     $post->revisions()->create([
         'revision_number' => 1,
         'event' => 'saved',
-        'slug' => $post->slug,
-        'featured_image_path' => 'posts/1/old.webp',
+        'snapshot' => [
+            'slug' => $post->slug,
+            'featured_image_path' => 'posts/1/old.webp',
+        ],
     ]);
     Storage::disk('public')->put('posts/1/current.webp', 'current');
     Storage::disk('public')->put('posts/1/old.webp', 'old');
@@ -90,8 +95,10 @@ test('pruned revision images survive when the surrounding transaction rolls back
     $post->revisions()->create([
         'revision_number' => 1,
         'event' => PostRevisionEvent::ImageChanged,
-        'slug' => $post->slug,
-        'featured_image_path' => 'posts/old.webp',
+        'snapshot' => [
+            'slug' => $post->slug,
+            'featured_image_path' => 'posts/old.webp',
+        ],
     ]);
 
     try {
@@ -108,13 +115,14 @@ test('pruned revision images survive when the surrounding transaction rolls back
     expect($post->revisions()->count())->toBe(1);
 });
 
-test('the featured image of a published post cannot be removed', function (): void {
+test('removing a published posts draft image leaves its public image intact', function (): void {
     $post = Post::factory()->published()->for($this->user, 'author')->create(['lock_version' => 0]);
+    $publicPath = $post->featured_image_path;
 
     $this->actingAs($this->user)
         ->deleteJson(route('posts.featured-image.destroy', $post), ['lock_version' => 0])
-        ->assertUnprocessable()
-        ->assertJsonValidationErrors(['image']);
+        ->assertOk();
 
-    expect($post->refresh()->featured_image_path)->not->toBeNull();
+    expect($post->refresh()->featured_image_path)->toBe($publicPath)
+        ->and($post->draft?->featured_image_path)->toBeNull();
 });

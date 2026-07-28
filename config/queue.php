@@ -46,6 +46,21 @@ return [
             'after_commit' => false,
         ],
 
+        /*
+         * Guided authoring runs a Claude Code process that can take minutes.
+         * `retry_after` has to outlast the job's own timeout, so it gets its
+         * own connection rather than making every other job wait that long
+         * before it can be reclaimed from a dead worker.
+         */
+        'assistant' => [
+            'driver' => 'database',
+            'connection' => env('DB_QUEUE_CONNECTION'),
+            'table' => env('DB_QUEUE_TABLE', 'jobs'),
+            'queue' => 'assistant',
+            'retry_after' => (int) env('ASSISTANT_QUEUE_RETRY_AFTER', 480),
+            'after_commit' => false,
+        ],
+
         'beanstalkd' => [
             'driver' => 'beanstalkd',
             'host' => env('BEANSTALKD_QUEUE_HOST', 'localhost'),

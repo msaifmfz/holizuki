@@ -39,6 +39,13 @@ test('chained slug changes redirect straight to the final url', function (): voi
                 'lock_version' => $post->lock_version,
             ])
             ->assertOk();
+
+        $post->refresh();
+        $this->actingAs($user)
+            ->postJson(route('posts.publish', $post), [
+                'lock_version' => $post->lock_version,
+            ])
+            ->assertOk();
     }
 
     $this->get('/posts/slug-a')->assertStatus(301)->assertRedirect(route('public.posts.show', 'slug-c'));

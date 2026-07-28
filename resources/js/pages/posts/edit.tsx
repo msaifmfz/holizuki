@@ -3,6 +3,8 @@ import {
     CalendarClock,
     Eye,
     History,
+    ListChecks,
+    LoaderCircle,
     RotateCcw,
     Save,
     Send,
@@ -28,6 +30,14 @@ import AssistantPanel from '@/components/assistant/assistant-panel';
 import FieldSuggestionChip from '@/components/assistant/field-suggestion-chip';
 import GenerateButton from '@/components/assistant/generate-button';
 import OutlineWizard from '@/components/assistant/outline-wizard';
+import DraftStep from '@/components/editor/guided/draft-step';
+import GuidedAuthoringShell from '@/components/editor/guided/guided-authoring-shell';
+import IdeaStep from '@/components/editor/guided/idea-step';
+import ImagesStep from '@/components/editor/guided/images-step';
+import PlansStep from '@/components/editor/guided/plans-step';
+import ReviewStep from '@/components/editor/guided/review-step';
+import type { ReviewCheck } from '@/components/editor/guided/review-step';
+import SourcesStep from '@/components/editor/guided/sources-step';
 import OrganizationCard from '@/components/editor/organization-card';
 import SeoCard from '@/components/editor/seo-card';
 import { documentHasText } from '@/components/editor/types';
@@ -48,12 +58,22 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAssistant } from '@/hooks/use-assistant';
+import { useAuthoringArtifacts } from '@/hooks/use-authoring-artifacts';
+import { useAuthoringJourney } from '@/hooks/use-authoring-journey';
+import { usePostMedia } from '@/hooks/use-post-media';
+import { usePostSources } from '@/hooks/use-post-sources';
 import {
     editorFormsEqual,
     postConflictFromHttpResponse,
     reconcileAcceptedChange,
     reconcileAutosave,
 } from '@/lib/editor-save';
+import {
+    buildReviewChecks,
+    guidedSaveLabel as buildGuidedSaveLabel,
+    storyPhotoFlowIsReady,
+    storyPhotosFrom,
+} from '@/lib/guided-authoring';
 import {
     errorText,
     formatDate,
@@ -67,6 +87,7 @@ import {
 } from '@/routes/posts/feature';
 import type {
     AcceptChangeResponse,
+    AuthoringStep,
     AutosaveResponse,
     EditorOption,
     PostConflict,
@@ -107,6 +128,9 @@ export default function EditPost({
     );
     const [conflict, setConflict] = useState<PostConflict | null>(null);
     const [assistantOpen, setAssistantOpen] = useState(false);
+    const [hasPendingPhotoChanges, setHasPendingPhotoChanges] = useState(false);
+    const [photoContextSyncCount, setPhotoContextSyncCount] = useState(0);
+    const [savingStyleAsDefault, setSavingStyleAsDefault] = useState(false);
     const [locateTarget, setLocateTarget] = useState<{
         markdown: string;
         token: number;
@@ -144,6 +168,20 @@ export default function EditPost({
     useEffect(() => {
         latestAutosaveDataRef.current = autosave.data;
     }, [autosave.data]);
+
+    const applyServerEditorUpdate = (updates: Partial<EditorForm>): void => {
+        latestAutosaveDataRef.current = {
+            ...latestAutosaveDataRef.current,
+            ...updates,
+        };
+        savedBaselineRef.current = {
+            ...savedBaselineRef.current,
+            ...updates,
+        };
+        autosave.setData((data) => ({ ...data, ...updates }));
+        autosave.setDefaults(updates);
+    };
+
     const publishing = useHttp<
         { lock_version: number; scheduled_at: string },
         PublishingResponse
@@ -295,6 +333,26 @@ export default function EditPost({
         ensureSaved: ensureLatestSaved,
         onAccepted: applyAcceptedChange,
     });
+    const authoringJourney = useAuthoringJourney({
+        postId: post.id,
+        kind:
+            post.published_at === null && post.status !== 'published'
+                ? 'creation'
+                : 'improvement',
+    });
+    const sourceLibrary = usePostSources(post.id);
+    // Editing a used image's alt text or caption rewrites the draft body on the
+    // server. Adopt that body and lock version so the next autosave does not
+    // re-send the stale copy and quietly undo the change.
+    const mediaLibrary = usePostMedia(post.id, (lockVersion, body) =>
+        applyServerEditorUpdate({ lock_version: lockVersion, body }),
+    );
+    const authoringArtifacts = useAuthoringArtifacts(post.id);
+    const photoChangesPending =
+        hasPendingPhotoChanges ||
+        mediaLibrary.hasPendingChanges ||
+        mediaLibrary.uploading ||
+        photoContextSyncCount > 0;
 
     const autosaveAfterDelay = useEffectEvent(() => void save());
 
@@ -332,19 +390,6 @@ export default function EditPost({
                     ? slugify(title)
                     : data.slug,
         }));
-    };
-
-    const applyServerEditorUpdate = (updates: Partial<EditorForm>): void => {
-        latestAutosaveDataRef.current = {
-            ...latestAutosaveDataRef.current,
-            ...updates,
-        };
-        savedBaselineRef.current = {
-            ...savedBaselineRef.current,
-            ...updates,
-        };
-        autosave.setData((data) => ({ ...data, ...updates }));
-        autosave.setDefaults(updates);
     };
 
     const applyPublishingResponse = (response: PublishingResponse) => {
@@ -457,530 +502,1129 @@ export default function EditPost({
     const publishingErrors = Object.values(publishing.errors)
         .flat()
         .filter((error): error is string => typeof error === 'string');
+    const guidedSaveLabel = buildGuidedSaveLabel({
+        photoChangesPending,
+        editorSaveState: saveState,
+        journeySaveState: authoringJourney.saveState,
+        savedAtLabel: formatDate(postState.updated_at),
+    });
+    const reviewChecks: ReviewCheck[] = buildReviewChecks(
+        autosave.data,
+        postState.featured_image_url,
+    );
+    const selectedAuthoringPlan =
+        authoringArtifacts.plans.find(
+            (plan) => plan.selected && plan.status === 'ready',
+        ) ?? null;
+    const storyMedia = storyPhotosFrom(
+        mediaLibrary.media,
+        postState.featured_image_url,
+    );
+    const storyPhotoDataHydrated =
+        mediaLibrary.hydrated && authoringArtifacts.hydrated;
+    const storyPhotoFlowReady = storyPhotoFlowIsReady(
+        storyMedia,
+        authoringArtifacts.imageCompositions,
+        storyPhotoDataHydrated,
+    );
+
+    const changeGuidedStep = (step: AuthoringStep): void => {
+        if (
+            authoringJourney.journey.current_step === 'images' &&
+            step !== 'images' &&
+            photoChangesPending
+        ) {
+            return;
+        }
+
+        if (
+            authoringJourney.journey.current_step === 'images' &&
+            step === 'draft'
+        ) {
+            if (
+                !storyPhotoDataHydrated ||
+                authoringArtifacts.authoringBusy ||
+                selectedAuthoringPlan === null ||
+                !storyPhotoFlowReady
+            ) {
+                return;
+            }
+
+            void (async () => {
+                if (
+                    !(await mediaLibrary.flush()) ||
+                    !(await authoringJourney.flush())
+                ) {
+                    return;
+                }
+
+                const task = await authoringArtifacts.generateDraft(
+                    selectedAuthoringPlan,
+                );
+
+                if (task !== null) {
+                    authoringJourney.goToStep('draft');
+                }
+            })();
+
+            return;
+        }
+
+        if (authoringJourney.journey.current_step !== 'draft') {
+            authoringJourney.goToStep(step);
+
+            return;
+        }
+
+        void ensureLatestSaved().then((saved) => {
+            if (saved) {
+                authoringJourney.goToStep(step);
+            }
+        });
+    };
+
+    const guidedFeaturedImage = (
+        <Card>
+            <CardHeader>
+                <CardTitle className="text-base">Featured image</CardTitle>
+                <CardDescription>
+                    This appears at the top of the article and in sharing
+                    previews.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <FeaturedImageUploader
+                    key={postState.featured_image_url ?? 'no-guided-image'}
+                    postId={post.id}
+                    lockVersion={autosave.data.lock_version}
+                    imageUrl={postState.featured_image_url}
+                    altText={autosave.data.featured_image_alt}
+                    caption={autosave.data.featured_image_caption}
+                    canRemove
+                    onAltTextChange={(value) =>
+                        autosave.setData('featured_image_alt', value)
+                    }
+                    onCaptionChange={(value) =>
+                        autosave.setData('featured_image_caption', value)
+                    }
+                    onChange={(response) => {
+                        const alternativeText =
+                            response.featured_image_alt ?? '';
+                        const editorUpdates: Partial<EditorForm> = {
+                            lock_version: response.lock_version,
+                            featured_image_alt: alternativeText,
+                        };
+
+                        if (response.featured_image_url === null) {
+                            editorUpdates.featured_image_caption = '';
+                        }
+
+                        applyServerEditorUpdate(editorUpdates);
+                        setPostState((current) => ({
+                            ...current,
+                            featured_image_url: response.featured_image_url,
+                            featured_image_alt: response.featured_image_alt,
+                            featured_image_caption:
+                                response.featured_image_url === null
+                                    ? null
+                                    : current.featured_image_caption,
+                            lock_version: response.lock_version,
+                            updated_at: response.updated_at,
+                        }));
+                    }}
+                />
+            </CardContent>
+        </Card>
+    );
+
+    const guidedStep = (() => {
+        switch (authoringJourney.journey.current_step) {
+            case 'idea':
+                return (
+                    <IdeaStep
+                        journey={authoringJourney.journey}
+                        generating={authoringArtifacts.generatingPlans}
+                        assistantAvailable={
+                            assistant.enabled &&
+                            assistant.available &&
+                            !authoringArtifacts.authoringBusy
+                        }
+                        onBriefChange={(brief) =>
+                            authoringJourney.persist({ brief })
+                        }
+                        savingStyleAsDefault={savingStyleAsDefault}
+                        onPersonalityChange={(personality) =>
+                            authoringJourney.persist({
+                                personality,
+                                save_as_default: savingStyleAsDefault,
+                            })
+                        }
+                        onCustomInstructionsChange={(customInstructions) =>
+                            authoringJourney.persist({
+                                custom_instructions: customInstructions,
+                                save_as_default: savingStyleAsDefault,
+                            })
+                        }
+                        onSaveStyleAsDefaultChange={(saveAsDefault) => {
+                            setSavingStyleAsDefault(saveAsDefault);
+
+                            if (saveAsDefault) {
+                                authoringJourney.persist({
+                                    personality:
+                                        authoringJourney.journey.personality,
+                                    custom_instructions:
+                                        authoringJourney.journey
+                                            .custom_instructions,
+                                    save_as_default: true,
+                                });
+                            }
+                        }}
+                        onGeneratePlans={() => {
+                            void (async () => {
+                                if (!(await authoringJourney.flush())) {
+                                    return;
+                                }
+
+                                const task =
+                                    await authoringArtifacts.generatePlans();
+
+                                if (task !== null) {
+                                    authoringJourney.goToStep('plans');
+                                }
+                            })();
+                        }}
+                    />
+                );
+            case 'sources':
+                return (
+                    <SourcesStep
+                        sources={sourceLibrary.sources}
+                        researchFindings={authoringArtifacts.researchFindings}
+                        uploading={sourceLibrary.uploading}
+                        researching={authoringArtifacts.researching}
+                        assistantAvailable={
+                            assistant.enabled &&
+                            assistant.available &&
+                            !authoringArtifacts.authoringBusy
+                        }
+                        webResearchEnabled={
+                            authoringJourney.journey.web_research_enabled
+                        }
+                        error={
+                            sourceLibrary.error ??
+                            authoringArtifacts.researchError ??
+                            authoringArtifacts.error ??
+                            authoringJourney.error
+                        }
+                        onAddNote={sourceLibrary.addNote}
+                        onAddUrl={async (url) => {
+                            await sourceLibrary.addUrl(url);
+                        }}
+                        onUpload={sourceLibrary.upload}
+                        onApprovalChange={(source, approved) =>
+                            sourceLibrary.updateSource(source, { approved })
+                        }
+                        onVisibilityChange={(source, visibility) =>
+                            sourceLibrary.updateSource(source, { visibility })
+                        }
+                        onRemove={sourceLibrary.remove}
+                        onWebResearchChange={(webResearchEnabled) =>
+                            authoringJourney.persist(
+                                {
+                                    web_research_enabled: webResearchEnabled,
+                                },
+                                { immediate: true },
+                            )
+                        }
+                        onResearch={async () => {
+                            if (!(await authoringJourney.flush())) {
+                                return;
+                            }
+
+                            await authoringArtifacts.research();
+                        }}
+                        onApproveResearch={sourceLibrary.approveResearch}
+                    />
+                );
+            case 'images':
+                if (!storyPhotoDataHydrated) {
+                    return (
+                        <div
+                            className="flex min-h-72 items-center justify-center gap-3 rounded-xl border bg-card p-6 text-sm text-muted-foreground"
+                            role="status"
+                        >
+                            <LoaderCircle className="size-5 animate-spin" />
+                            Loading your story photos and AI guidance…
+                        </div>
+                    );
+                }
+
+                return (
+                    <ImagesStep
+                        plan={selectedAuthoringPlan}
+                        media={mediaLibrary.media}
+                        guidance={authoringArtifacts.imageGuidance}
+                        groupSuggestions={
+                            authoringArtifacts.imageGroupSuggestions
+                        }
+                        compositions={authoringArtifacts.imageCompositions}
+                        passages={authoringArtifacts.imagePassages}
+                        featuredImageUrl={postState.featured_image_url}
+                        uploading={mediaLibrary.uploading}
+                        reviewing={authoringArtifacts.reviewingImages}
+                        savingFlow={authoringArtifacts.savingImageFlow}
+                        generatingPassagesFor={
+                            authoringArtifacts.generatingPassagesFor
+                        }
+                        savingPassage={
+                            authoringArtifacts.savingImageComposition
+                        }
+                        authoringBusy={authoringArtifacts.authoringBusy}
+                        assistantAvailable={
+                            assistant.enabled && assistant.available
+                        }
+                        error={
+                            mediaLibrary.error ??
+                            authoringArtifacts.imagesError ??
+                            authoringArtifacts.error
+                        }
+                        onUpload={async (files) => {
+                            setPhotoContextSyncCount((count) => count + 1);
+
+                            try {
+                                await mediaLibrary.upload(files);
+                                await authoringArtifacts.refresh();
+                            } catch {
+                                return;
+                            } finally {
+                                setPhotoContextSyncCount((count) =>
+                                    Math.max(0, count - 1),
+                                );
+                            }
+                        }}
+                        onChange={async (media, updates) => {
+                            setPhotoContextSyncCount((count) => count + 1);
+
+                            try {
+                                const saved = await mediaLibrary.updateMedia(
+                                    media,
+                                    updates,
+                                );
+
+                                if (saved) {
+                                    await authoringArtifacts.refresh();
+                                }
+
+                                return saved;
+                            } finally {
+                                setPhotoContextSyncCount((count) =>
+                                    Math.max(0, count - 1),
+                                );
+                            }
+                        }}
+                        onRemove={async (media) => {
+                            setPhotoContextSyncCount((count) => count + 1);
+
+                            try {
+                                if (await mediaLibrary.remove(media)) {
+                                    await authoringArtifacts.refresh();
+                                }
+                            } finally {
+                                setPhotoContextSyncCount((count) =>
+                                    Math.max(0, count - 1),
+                                );
+                            }
+                        }}
+                        onPendingChangesChange={setHasPendingPhotoChanges}
+                        onReview={(plan) => {
+                            void (async () => {
+                                if (
+                                    !(await mediaLibrary.flush()) ||
+                                    !(await authoringJourney.flush())
+                                ) {
+                                    return;
+                                }
+
+                                await authoringArtifacts.generateImageGuidance(
+                                    plan,
+                                );
+                            })();
+                        }}
+                        onSaveFlow={async (plan, flow) => {
+                            if (!(await mediaLibrary.flush())) {
+                                return false;
+                            }
+
+                            return authoringArtifacts.saveImageFlow(plan, flow);
+                        }}
+                        onGeneratePassages={async (composition) => {
+                            if (!(await mediaLibrary.flush())) {
+                                return;
+                            }
+
+                            await authoringArtifacts.generateImagePassages(
+                                composition,
+                            );
+                        }}
+                        onSavePassage={async (composition, update) => {
+                            if (!(await mediaLibrary.flush())) {
+                                return false;
+                            }
+
+                            return authoringArtifacts.updateImageComposition(
+                                composition,
+                                update,
+                            );
+                        }}
+                    />
+                );
+            case 'plans':
+                return (
+                    <PlansStep
+                        plans={authoringArtifacts.plans}
+                        generating={authoringArtifacts.generatingPlans}
+                        assistantAvailable={
+                            assistant.enabled &&
+                            assistant.available &&
+                            !authoringArtifacts.authoringBusy
+                        }
+                        error={
+                            authoringArtifacts.plansError ??
+                            authoringArtifacts.error ??
+                            assistant.stateError
+                        }
+                        onGenerate={async () => {
+                            if (!(await authoringJourney.flush())) {
+                                return;
+                            }
+
+                            await authoringArtifacts.generatePlans();
+                        }}
+                        onSelect={async (plan) => {
+                            await authoringArtifacts.selectPlan(plan);
+                            authoringJourney.goToStep('images');
+                        }}
+                    />
+                );
+            case 'draft':
+                return (
+                    <DraftStep
+                        postId={post.id}
+                        title={autosave.data.title}
+                        excerpt={autosave.data.excerpt}
+                        body={autosave.data.body}
+                        variants={authoringArtifacts.drafts}
+                        generating={
+                            authoringArtifacts.generatingDraft ||
+                            assistant.generating
+                        }
+                        assistantAvailable={
+                            assistant.enabled &&
+                            assistant.available &&
+                            !authoringArtifacts.authoringBusy
+                        }
+                        generationError={
+                            authoringArtifacts.draftError ??
+                            authoringArtifacts.error
+                        }
+                        errors={{
+                            title: errorText(autosave.errors.title),
+                            excerpt: errorText(autosave.errors.excerpt),
+                            body: errorText(autosave.errors.body),
+                        }}
+                        locateTarget={locateTarget}
+                        onTitleChange={changeTitle}
+                        onExcerptChange={(excerpt) =>
+                            autosave.setData('excerpt', excerpt)
+                        }
+                        onBodyChange={(body) => autosave.setData('body', body)}
+                        onGenerateExcerpt={() => {
+                            void assistant.generateMetadata(['excerpt']);
+                        }}
+                        onAiTransform={(selection, preset, instruction) => {
+                            setAssistantOpen(true);
+
+                            void assistant.transform(
+                                selection,
+                                preset,
+                                instruction,
+                            );
+                        }}
+                        onUseVariant={async (variant) => {
+                            if (!(await ensureLatestSaved())) {
+                                return;
+                            }
+
+                            const response =
+                                await authoringArtifacts.applyDraft(
+                                    variant,
+                                    latestAutosaveDataRef.current.lock_version,
+                                );
+
+                            if (response !== null) {
+                                applyAcceptedChange(response.post);
+                            }
+                        }}
+                        onGenerateAgain={() => {
+                            const selectedPlan = authoringArtifacts.plans.find(
+                                (plan) => plan.selected,
+                            );
+
+                            if (selectedPlan) {
+                                void authoringArtifacts.generateDraft(
+                                    selectedPlan,
+                                );
+                            }
+                        }}
+                    />
+                );
+            case 'review':
+                return (
+                    <ReviewStep
+                        status={postState.status}
+                        checks={reviewChecks}
+                        publishing={publishing.processing}
+                        scheduleAt={scheduleAt}
+                        publishingErrors={publishingErrors}
+                        organization={
+                            <OrganizationCard
+                                autosave={autosave}
+                                assistant={assistant}
+                                categories={categories}
+                                authors={authors}
+                                tagSuggestions={tagSuggestions}
+                            />
+                        }
+                        image={guidedFeaturedImage}
+                        onScheduleAtChange={setScheduleAt}
+                        onPreview={openPreview}
+                        onPublish={publishNow}
+                        onSchedule={schedulePost}
+                    />
+                );
+        }
+    })();
 
     return (
         <>
             <Head title={`Edit ${postState.title}`} />
-            <div className="mx-auto grid w-full max-w-7xl gap-6 p-4 lg:grid-cols-[minmax(0,1fr)_21rem] lg:p-6">
-                <main className="grid min-w-0 gap-6">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                            <div className="flex items-center gap-2">
-                                <h1 className="text-2xl font-semibold tracking-tight">
-                                    Edit post
-                                </h1>
-                                <PostStatusBadge status={postState.status} />
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                                {saveState === 'saving'
-                                    ? 'Saving…'
-                                    : saveState === 'error'
-                                      ? 'Save failed'
-                                      : `Saved ${formatDate(postState.updated_at)}`}
-                            </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                            <Button
-                                type="button"
-                                variant={assistantOpen ? 'default' : 'outline'}
-                                onClick={() =>
-                                    setAssistantOpen((open) => !open)
-                                }
-                            >
-                                <Sparkles />
-                                Co-writer
-                                {assistant.pendingCount > 0 && (
-                                    <span className="ml-1 rounded-full bg-primary-foreground/20 px-1.5 text-xs">
-                                        {assistant.pendingCount}
-                                    </span>
-                                )}
-                            </Button>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={openPreview}
-                            >
-                                <Eye />
-                                Preview
-                            </Button>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                disabled={autosave.processing}
-                                onClick={() => void save(true)}
-                            >
-                                <Save />
-                                Save revision
-                            </Button>
-                        </div>
-                    </div>
+            {!authoringJourney.hydrated ? (
+                <div
+                    className="mx-auto flex min-h-72 w-full max-w-6xl items-center justify-center gap-3 p-6 text-sm text-muted-foreground"
+                    role="status"
+                >
+                    <LoaderCircle className="size-5 animate-spin" />
+                    Loading your writing progress…
+                </div>
+            ) : authoringJourney.journey.last_surface === 'guided' ? (
+                <GuidedAuthoringShell
+                    journey={authoringJourney.journey}
+                    saveLabel={guidedSaveLabel}
+                    canContinue={
+                        saveState !== 'error' &&
+                        authoringJourney.saveState !== 'error' &&
+                        (authoringJourney.journey.current_step !== 'plans' ||
+                            selectedAuthoringPlan !== null) &&
+                        (authoringJourney.journey.current_step !== 'images' ||
+                            (storyPhotoDataHydrated &&
+                                !authoringArtifacts.authoringBusy &&
+                                selectedAuthoringPlan !== null &&
+                                storyPhotoFlowReady &&
+                                !photoChangesPending))
+                    }
+                    onStepChange={changeGuidedStep}
+                    onOpenAdvanced={() => {
+                        if (
+                            authoringJourney.journey.current_step ===
+                                'images' &&
+                            photoChangesPending
+                        ) {
+                            return;
+                        }
 
-                    {conflict && (
-                        <Alert variant="destructive">
-                            <AlertTitle>This post changed elsewhere</AlertTitle>
-                            <AlertDescription className="grid gap-3">
-                                <p>
-                                    {conflict.last_editor
-                                        ? `${conflict.last_editor} saved a newer version.`
-                                        : 'A newer version was saved.'}{' '}
-                                    Reload it, or explicitly overwrite it with
-                                    your draft.
-                                </p>
-                                <div className="flex gap-2">
-                                    <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => router.reload()}
-                                    >
-                                        Reload latest
-                                    </Button>
-                                    <Button
-                                        size="sm"
-                                        variant="destructive"
-                                        onClick={() => void save(false, true)}
-                                    >
-                                        Keep my draft
-                                    </Button>
-                                </div>
-                            </AlertDescription>
-                        </Alert>
-                    )}
-
-                    <Card>
-                        <CardContent className="grid gap-5 pt-6">
-                            <div className="grid gap-2">
-                                <Label htmlFor="title">Title</Label>
-                                <Input
-                                    id="title"
-                                    value={autosave.data.title}
-                                    maxLength={255}
-                                    onChange={(event) =>
-                                        changeTitle(event.target.value)
-                                    }
-                                    placeholder="Post title"
-                                />
-                                <InputError
-                                    message={errorText(autosave.errors.title)}
-                                />
-                                {assistant.suggestions.title && (
-                                    <FieldSuggestionChip
-                                        change={assistant.suggestions.title}
-                                        busy={assistant.isDeciding(
-                                            assistant.suggestions.title.id,
-                                        )}
-                                        error={assistant.decisionError(
-                                            assistant.suggestions.title.id,
-                                        )}
-                                        onAccept={assistant.accept}
-                                        onReject={assistant.reject}
-                                    />
-                                )}
-                            </div>
-                            <div className="grid gap-2">
-                                <div className="flex items-center justify-between gap-2">
-                                    <Label htmlFor="slug">Slug</Label>
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={() =>
-                                            autosave.setData((data) => ({
-                                                ...data,
-                                                slug: slugify(data.title),
-                                                slug_is_manual: false,
-                                            }))
-                                        }
-                                    >
-                                        <RotateCcw />
-                                        Regenerate
-                                    </Button>
-                                </div>
-                                <Input
-                                    id="slug"
-                                    value={autosave.data.slug}
-                                    maxLength={255}
-                                    onChange={(event) =>
-                                        autosave.setData((data) => ({
-                                            ...data,
-                                            slug: slugify(event.target.value),
-                                            slug_is_manual: true,
-                                        }))
-                                    }
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    {postState.slug_locked_at
-                                        ? 'This post has been published — changing the slug creates a permanent redirect from the old URL.'
-                                        : 'Automatic changes stop after first publication; manual edits remain available.'}
-                                </p>
-                                <InputError
-                                    message={errorText(autosave.errors.slug)}
-                                />
-                            </div>
-                            <div className="grid gap-2">
-                                <div className="flex items-center justify-between">
-                                    <Label htmlFor="excerpt">Excerpt</Label>
-                                    <GenerateButton
-                                        busy={assistant.generating}
-                                        disabled={!assistant.canGenerate}
-                                        onClick={() =>
-                                            void assistant.generateMetadata([
-                                                'excerpt',
-                                            ])
-                                        }
+                        authoringJourney.setSurface('advanced');
+                    }}
+                >
+                    {guidedStep}
+                </GuidedAuthoringShell>
+            ) : (
+                <div className="mx-auto grid w-full max-w-7xl gap-6 p-4 lg:grid-cols-[minmax(0,1fr)_21rem] lg:p-6">
+                    <main className="grid min-w-0 gap-6">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <h1 className="text-2xl font-semibold tracking-tight">
+                                        Edit post
+                                    </h1>
+                                    <PostStatusBadge
+                                        status={postState.status}
                                     />
                                 </div>
-                                <textarea
-                                    id="excerpt"
-                                    value={autosave.data.excerpt}
-                                    maxLength={500}
-                                    rows={4}
-                                    onChange={(event) =>
-                                        autosave.setData(
-                                            'excerpt',
-                                            event.target.value,
-                                        )
+                                <p className="text-sm text-muted-foreground">
+                                    {saveState === 'saving'
+                                        ? 'Saving…'
+                                        : saveState === 'error'
+                                          ? 'Save failed'
+                                          : `Saved ${formatDate(postState.updated_at)}`}
+                                </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() =>
+                                        authoringJourney.setSurface('guided')
                                     }
-                                    className="w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                                    placeholder="A concise summary shown with the post"
-                                />
-                                <div className="flex justify-between text-xs text-muted-foreground">
+                                >
+                                    <ListChecks />
+                                    Guided mode
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant={
+                                        assistantOpen ? 'default' : 'outline'
+                                    }
+                                    onClick={() =>
+                                        setAssistantOpen((open) => !open)
+                                    }
+                                >
+                                    <Sparkles />
+                                    Co-writer
+                                    {assistant.pendingCount > 0 && (
+                                        <span className="ml-1 rounded-full bg-primary-foreground/20 px-1.5 text-xs">
+                                            {assistant.pendingCount}
+                                        </span>
+                                    )}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={openPreview}
+                                >
+                                    <Eye />
+                                    Preview
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    disabled={autosave.processing}
+                                    onClick={() => void save(true)}
+                                >
+                                    <Save />
+                                    Save revision
+                                </Button>
+                            </div>
+                        </div>
+
+                        {conflict && (
+                            <Alert variant="destructive">
+                                <AlertTitle>
+                                    This post changed elsewhere
+                                </AlertTitle>
+                                <AlertDescription className="grid gap-3">
+                                    <p>
+                                        {conflict.last_editor
+                                            ? `${conflict.last_editor} saved a newer version.`
+                                            : 'A newer version was saved.'}{' '}
+                                        Reload it, or explicitly overwrite it
+                                        with your draft.
+                                    </p>
+                                    <div className="flex gap-2">
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => router.reload()}
+                                        >
+                                            Reload latest
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="destructive"
+                                            onClick={() =>
+                                                void save(false, true)
+                                            }
+                                        >
+                                            Keep my draft
+                                        </Button>
+                                    </div>
+                                </AlertDescription>
+                            </Alert>
+                        )}
+
+                        <Card>
+                            <CardContent className="grid gap-5 pt-6">
+                                <div className="grid gap-2">
+                                    <Label htmlFor="title">Title</Label>
+                                    <Input
+                                        id="title"
+                                        value={autosave.data.title}
+                                        maxLength={255}
+                                        onChange={(event) =>
+                                            changeTitle(event.target.value)
+                                        }
+                                        placeholder="Post title"
+                                    />
                                     <InputError
                                         message={errorText(
-                                            autosave.errors.excerpt,
+                                            autosave.errors.title,
                                         )}
                                     />
-                                    <span>
-                                        {autosave.data.excerpt.length}/500
-                                    </span>
+                                    {assistant.suggestions.title && (
+                                        <FieldSuggestionChip
+                                            change={assistant.suggestions.title}
+                                            busy={assistant.isDeciding(
+                                                assistant.suggestions.title.id,
+                                            )}
+                                            error={assistant.decisionError(
+                                                assistant.suggestions.title.id,
+                                            )}
+                                            onAccept={assistant.accept}
+                                            onReject={assistant.reject}
+                                        />
+                                    )}
                                 </div>
-                                {assistant.suggestions.excerpt && (
-                                    <FieldSuggestionChip
-                                        change={assistant.suggestions.excerpt}
-                                        busy={assistant.isDeciding(
-                                            assistant.suggestions.excerpt.id,
-                                        )}
-                                        error={assistant.decisionError(
-                                            assistant.suggestions.excerpt.id,
-                                        )}
-                                        onAccept={assistant.accept}
-                                        onReject={assistant.reject}
+                                <div className="grid gap-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <Label htmlFor="slug">Slug</Label>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() =>
+                                                autosave.setData((data) => ({
+                                                    ...data,
+                                                    slug: slugify(data.title),
+                                                    slug_is_manual: false,
+                                                }))
+                                            }
+                                        >
+                                            <RotateCcw />
+                                            Regenerate
+                                        </Button>
+                                    </div>
+                                    <Input
+                                        id="slug"
+                                        value={autosave.data.slug}
+                                        maxLength={255}
+                                        onChange={(event) =>
+                                            autosave.setData((data) => ({
+                                                ...data,
+                                                slug: slugify(
+                                                    event.target.value,
+                                                ),
+                                                slug_is_manual: true,
+                                            }))
+                                        }
                                     />
-                                )}
-                            </div>
-                        </CardContent>
-                    </Card>
+                                    <p className="text-xs text-muted-foreground">
+                                        {postState.slug_locked_at
+                                            ? 'This post has been published — changing the slug creates a permanent redirect from the old URL.'
+                                            : 'Automatic changes stop after first publication; manual edits remain available.'}
+                                    </p>
+                                    <InputError
+                                        message={errorText(
+                                            autosave.errors.slug,
+                                        )}
+                                    />
+                                </div>
+                                <div className="grid gap-2">
+                                    <div className="flex items-center justify-between">
+                                        <Label htmlFor="excerpt">Excerpt</Label>
+                                        <GenerateButton
+                                            busy={assistant.generating}
+                                            disabled={!assistant.canGenerate}
+                                            onClick={() =>
+                                                void assistant.generateMetadata(
+                                                    ['excerpt'],
+                                                )
+                                            }
+                                        />
+                                    </div>
+                                    <textarea
+                                        id="excerpt"
+                                        value={autosave.data.excerpt}
+                                        maxLength={500}
+                                        rows={4}
+                                        onChange={(event) =>
+                                            autosave.setData(
+                                                'excerpt',
+                                                event.target.value,
+                                            )
+                                        }
+                                        className="w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                        placeholder="A concise summary shown with the post"
+                                    />
+                                    <div className="flex justify-between text-xs text-muted-foreground">
+                                        <InputError
+                                            message={errorText(
+                                                autosave.errors.excerpt,
+                                            )}
+                                        />
+                                        <span>
+                                            {autosave.data.excerpt.length}/500
+                                        </span>
+                                    </div>
+                                    {assistant.suggestions.excerpt && (
+                                        <FieldSuggestionChip
+                                            change={
+                                                assistant.suggestions.excerpt
+                                            }
+                                            busy={assistant.isDeciding(
+                                                assistant.suggestions.excerpt
+                                                    .id,
+                                            )}
+                                            error={assistant.decisionError(
+                                                assistant.suggestions.excerpt
+                                                    .id,
+                                            )}
+                                            onAccept={assistant.accept}
+                                            onReject={assistant.reject}
+                                        />
+                                    )}
+                                </div>
+                            </CardContent>
+                        </Card>
 
-                    {!documentHasText(autosave.data.body) && (
-                        <OutlineWizard
-                            busy={assistant.generating}
-                            disabled={!assistant.canGenerate}
-                            onStart={async (topic) => {
-                                setAssistantOpen(true);
-
-                                return assistant.startOutline(topic);
-                            }}
-                        />
-                    )}
-
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Body</CardTitle>
-                            <CardDescription>
-                                Use headings, lists, links, quotes, and code to
-                                structure the article.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <RichTextEditor
-                                value={autosave.data.body}
-                                postId={post.id}
-                                locateTarget={locateTarget}
-                                aiBusy={
-                                    assistant.generating ||
-                                    !assistant.canGenerate
-                                }
-                                onAiTransform={(
-                                    selection,
-                                    preset,
-                                    instruction,
-                                ) => {
+                        {!documentHasText(autosave.data.body) && (
+                            <OutlineWizard
+                                busy={assistant.generating}
+                                disabled={!assistant.canGenerate}
+                                onStart={async (topic) => {
                                     setAssistantOpen(true);
-                                    void assistant.transform(
+
+                                    return assistant.startOutline(topic);
+                                }}
+                            />
+                        )}
+
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Body</CardTitle>
+                                <CardDescription>
+                                    Use headings, lists, links, quotes, and code
+                                    to structure the article.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <RichTextEditor
+                                    value={autosave.data.body}
+                                    postId={post.id}
+                                    locateTarget={locateTarget}
+                                    aiBusy={
+                                        assistant.generating ||
+                                        !assistant.canGenerate
+                                    }
+                                    onAiTransform={(
                                         selection,
                                         preset,
                                         instruction,
-                                    );
-                                }}
-                                onChange={(body) =>
-                                    autosave.setData('body', body)
-                                }
-                            />
-                            <InputError
-                                className="mt-2"
-                                message={errorText(autosave.errors.body)}
-                            />
-                        </CardContent>
-                    </Card>
-                </main>
+                                    ) => {
+                                        setAssistantOpen(true);
+                                        void assistant.transform(
+                                            selection,
+                                            preset,
+                                            instruction,
+                                        );
+                                    }}
+                                    onChange={(body) =>
+                                        autosave.setData('body', body)
+                                    }
+                                />
+                                <InputError
+                                    className="mt-2"
+                                    message={errorText(autosave.errors.body)}
+                                />
+                            </CardContent>
+                        </Card>
+                    </main>
 
-                <aside className="grid content-start gap-6">
-                    <OrganizationCard
-                        autosave={autosave}
-                        assistant={assistant}
-                        categories={categories}
-                        authors={authors}
-                        tagSuggestions={tagSuggestions}
-                    />
+                    <aside className="grid content-start gap-6">
+                        <OrganizationCard
+                            autosave={autosave}
+                            assistant={assistant}
+                            categories={categories}
+                            authors={authors}
+                            tagSuggestions={tagSuggestions}
+                        />
 
-                    <SeoCard
-                        autosave={autosave}
-                        assistant={assistant}
-                        postId={post.id}
-                        ogImageUrl={postState.og_image_url}
-                        onOgImageChange={(response) => {
-                            applyServerEditorUpdate({
-                                lock_version: response.lock_version,
-                            });
-                            setPostState((current) => ({
-                                ...current,
-                                og_image_url: response.og_image_url,
-                                lock_version: response.lock_version,
-                                updated_at: response.updated_at,
-                            }));
-                        }}
-                    />
+                        <SeoCard
+                            autosave={autosave}
+                            assistant={assistant}
+                            postId={post.id}
+                            ogImageUrl={postState.og_image_url}
+                            onOgImageChange={(response) => {
+                                applyServerEditorUpdate({
+                                    lock_version: response.lock_version,
+                                });
+                                setPostState((current) => ({
+                                    ...current,
+                                    og_image_url: response.og_image_url,
+                                    lock_version: response.lock_version,
+                                    updated_at: response.updated_at,
+                                }));
+                            }}
+                        />
 
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Publishing</CardTitle>
-                            <CardDescription>
-                                All fields and a featured image are required.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="grid gap-4">
-                            {publishingErrors.length > 0 && (
-                                <Alert variant="destructive">
-                                    <AlertTitle>Cannot publish yet</AlertTitle>
-                                    <AlertDescription>
-                                        <ul className="list-disc pl-4">
-                                            {publishingErrors.map((error) => (
-                                                <li key={error}>{error}</li>
-                                            ))}
-                                        </ul>
-                                    </AlertDescription>
-                                </Alert>
-                            )}
-                            {postState.status === 'published' ? (
-                                <>
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Publishing</CardTitle>
+                                <CardDescription>
+                                    All fields and a featured image are
+                                    required.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="grid gap-4">
+                                {publishingErrors.length > 0 && (
+                                    <Alert variant="destructive">
+                                        <AlertTitle>
+                                            Cannot publish yet
+                                        </AlertTitle>
+                                        <AlertDescription>
+                                            <ul className="list-disc pl-4">
+                                                {publishingErrors.map(
+                                                    (error) => (
+                                                        <li key={error}>
+                                                            {error}
+                                                        </li>
+                                                    ),
+                                                )}
+                                            </ul>
+                                        </AlertDescription>
+                                    </Alert>
+                                )}
+                                {postState.status === 'published' ? (
+                                    <>
+                                        <Button
+                                            type="button"
+                                            variant={
+                                                featuredAt
+                                                    ? 'secondary'
+                                                    : 'outline'
+                                            }
+                                            disabled={featuring.processing}
+                                            onClick={toggleFeatured}
+                                        >
+                                            {featuredAt ? (
+                                                <StarOff />
+                                            ) : (
+                                                <Star />
+                                            )}
+                                            {featuredAt
+                                                ? 'Remove from featured'
+                                                : 'Feature on homepage'}
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            disabled={publishing.processing}
+                                            onClick={unpublishPost}
+                                        >
+                                            Unpublish
+                                        </Button>
+                                    </>
+                                ) : (
                                     <Button
                                         type="button"
-                                        variant={
-                                            featuredAt ? 'secondary' : 'outline'
-                                        }
-                                        disabled={featuring.processing}
-                                        onClick={toggleFeatured}
+                                        disabled={publishing.processing}
+                                        onClick={publishNow}
                                     >
-                                        {featuredAt ? <StarOff /> : <Star />}
-                                        {featuredAt
-                                            ? 'Remove from featured'
-                                            : 'Feature on homepage'}
+                                        <Send />
+                                        Publish now
                                     </Button>
+                                )}
+                                {postState.status === 'scheduled' && (
                                     <Button
                                         type="button"
                                         variant="outline"
                                         disabled={publishing.processing}
                                         onClick={unpublishPost}
                                     >
-                                        Unpublish
+                                        Cancel schedule
                                     </Button>
-                                </>
-                            ) : (
-                                <Button
-                                    type="button"
-                                    disabled={publishing.processing}
-                                    onClick={publishNow}
-                                >
-                                    <Send />
-                                    Publish now
-                                </Button>
-                            )}
-                            {postState.status === 'scheduled' && (
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    disabled={publishing.processing}
-                                    onClick={unpublishPost}
-                                >
-                                    Cancel schedule
-                                </Button>
-                            )}
-                            {postState.status !== 'published' && (
-                                <div className="grid gap-2">
-                                    <Label htmlFor="schedule-at">
-                                        Schedule in{' '}
-                                        {
-                                            Intl.DateTimeFormat().resolvedOptions()
-                                                .timeZone
-                                        }
-                                    </Label>
-                                    <Input
-                                        id="schedule-at"
-                                        type="datetime-local"
-                                        min={toLocalDateTimeInput(
-                                            new Date().toISOString(),
-                                        )}
-                                        value={scheduleAt}
-                                        onChange={(event) =>
-                                            setScheduleAt(event.target.value)
-                                        }
-                                    />
-                                    <Button
-                                        type="button"
-                                        variant="secondary"
-                                        disabled={
-                                            !scheduleAt || publishing.processing
-                                        }
-                                        onClick={schedulePost}
-                                    >
-                                        <CalendarClock />
-                                        Schedule
-                                    </Button>
-                                </div>
-                            )}
-                            {postState.published_at && (
-                                <p className="text-xs text-muted-foreground">
-                                    Published{' '}
-                                    {formatDate(postState.published_at)}
-                                </p>
-                            )}
-                            {postState.scheduled_at && (
-                                <p className="text-xs text-muted-foreground">
-                                    Scheduled for{' '}
-                                    {formatDate(postState.scheduled_at)}
-                                </p>
-                            )}
-                        </CardContent>
-                    </Card>
+                                )}
+                                {postState.status !== 'published' && (
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="schedule-at">
+                                            Schedule in{' '}
+                                            {
+                                                Intl.DateTimeFormat().resolvedOptions()
+                                                    .timeZone
+                                            }
+                                        </Label>
+                                        <Input
+                                            id="schedule-at"
+                                            type="datetime-local"
+                                            min={toLocalDateTimeInput(
+                                                new Date().toISOString(),
+                                            )}
+                                            value={scheduleAt}
+                                            onChange={(event) =>
+                                                setScheduleAt(
+                                                    event.target.value,
+                                                )
+                                            }
+                                        />
+                                        <Button
+                                            type="button"
+                                            variant="secondary"
+                                            disabled={
+                                                !scheduleAt ||
+                                                publishing.processing
+                                            }
+                                            onClick={schedulePost}
+                                        >
+                                            <CalendarClock />
+                                            Schedule
+                                        </Button>
+                                    </div>
+                                )}
+                                {postState.published_at && (
+                                    <p className="text-xs text-muted-foreground">
+                                        Published{' '}
+                                        {formatDate(postState.published_at)}
+                                    </p>
+                                )}
+                                {postState.scheduled_at && (
+                                    <p className="text-xs text-muted-foreground">
+                                        Scheduled for{' '}
+                                        {formatDate(postState.scheduled_at)}
+                                    </p>
+                                )}
+                            </CardContent>
+                        </Card>
 
-                    <Card>
-                        <CardContent className="grid gap-3 pt-6">
-                            <div className="flex justify-end">
-                                <GenerateButton
-                                    label="Review images"
-                                    busy={assistant.generating}
-                                    disabled={!assistant.canGenerate}
-                                    onClick={() => {
-                                        setAssistantOpen(true);
-                                        void assistant.reviewImages();
+                        <Card>
+                            <CardContent className="grid gap-3 pt-6">
+                                <div className="flex justify-end">
+                                    <GenerateButton
+                                        label="Review images"
+                                        busy={assistant.generating}
+                                        disabled={!assistant.canGenerate}
+                                        onClick={() => {
+                                            setAssistantOpen(true);
+                                            void assistant.reviewImages();
+                                        }}
+                                    />
+                                </div>
+                                <FeaturedImageUploader
+                                    key={
+                                        postState.featured_image_url ??
+                                        'no-image'
+                                    }
+                                    postId={post.id}
+                                    lockVersion={autosave.data.lock_version}
+                                    imageUrl={postState.featured_image_url}
+                                    altText={autosave.data.featured_image_alt}
+                                    caption={
+                                        autosave.data.featured_image_caption
+                                    }
+                                    canRemove
+                                    onAltTextChange={(value) =>
+                                        autosave.setData(
+                                            'featured_image_alt',
+                                            value,
+                                        )
+                                    }
+                                    onCaptionChange={(value) =>
+                                        autosave.setData(
+                                            'featured_image_caption',
+                                            value,
+                                        )
+                                    }
+                                    onChange={(response) => {
+                                        const alternativeText =
+                                            response.featured_image_alt ?? '';
+                                        const editorUpdates: Partial<EditorForm> =
+                                            {
+                                                lock_version:
+                                                    response.lock_version,
+                                                featured_image_alt:
+                                                    alternativeText,
+                                            };
+
+                                        if (
+                                            response.featured_image_url === null
+                                        ) {
+                                            editorUpdates.featured_image_caption =
+                                                '';
+                                        }
+
+                                        applyServerEditorUpdate(editorUpdates);
+                                        setPostState((current) => ({
+                                            ...current,
+                                            featured_image_url:
+                                                response.featured_image_url,
+                                            featured_image_alt:
+                                                response.featured_image_alt,
+                                            featured_image_caption:
+                                                response.featured_image_url ===
+                                                null
+                                                    ? null
+                                                    : current.featured_image_caption,
+                                            lock_version: response.lock_version,
+                                            updated_at: response.updated_at,
+                                        }));
                                     }}
                                 />
-                            </div>
-                            <FeaturedImageUploader
-                                key={postState.featured_image_url ?? 'no-image'}
-                                postId={post.id}
-                                lockVersion={autosave.data.lock_version}
-                                imageUrl={postState.featured_image_url}
-                                altText={autosave.data.featured_image_alt}
-                                caption={autosave.data.featured_image_caption}
-                                canRemove={postState.status === 'draft'}
-                                onAltTextChange={(value) =>
-                                    autosave.setData(
-                                        'featured_image_alt',
-                                        value,
-                                    )
-                                }
-                                onCaptionChange={(value) =>
-                                    autosave.setData(
-                                        'featured_image_caption',
-                                        value,
-                                    )
-                                }
-                                onChange={(response) => {
-                                    const alternativeText =
-                                        response.featured_image_alt ?? '';
-                                    const editorUpdates: Partial<EditorForm> = {
-                                        lock_version: response.lock_version,
-                                        featured_image_alt: alternativeText,
-                                    };
+                                {assistant.suggestions.featured_image_alt && (
+                                    <div className="grid gap-1">
+                                        <p className="text-xs font-medium text-muted-foreground">
+                                            Suggested image alt text
+                                        </p>
+                                        <FieldSuggestionChip
+                                            change={
+                                                assistant.suggestions
+                                                    .featured_image_alt
+                                            }
+                                            busy={assistant.isDeciding(
+                                                assistant.suggestions
+                                                    .featured_image_alt.id,
+                                            )}
+                                            error={assistant.decisionError(
+                                                assistant.suggestions
+                                                    .featured_image_alt.id,
+                                            )}
+                                            onAccept={assistant.accept}
+                                            onReject={assistant.reject}
+                                        />
+                                    </div>
+                                )}
+                                {assistant.suggestions
+                                    .featured_image_caption && (
+                                    <div className="grid gap-1">
+                                        <p className="text-xs font-medium text-muted-foreground">
+                                            Suggested image caption
+                                        </p>
+                                        <FieldSuggestionChip
+                                            change={
+                                                assistant.suggestions
+                                                    .featured_image_caption
+                                            }
+                                            busy={assistant.isDeciding(
+                                                assistant.suggestions
+                                                    .featured_image_caption.id,
+                                            )}
+                                            error={assistant.decisionError(
+                                                assistant.suggestions
+                                                    .featured_image_caption.id,
+                                            )}
+                                            onAccept={assistant.accept}
+                                            onReject={assistant.reject}
+                                        />
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
 
-                                    if (response.featured_image_url === null) {
-                                        editorUpdates.featured_image_caption =
-                                            '';
-                                    }
-
-                                    applyServerEditorUpdate(editorUpdates);
-                                    setPostState((current) => ({
-                                        ...current,
-                                        featured_image_url:
-                                            response.featured_image_url,
-                                        featured_image_alt:
-                                            response.featured_image_alt,
-                                        featured_image_caption:
-                                            response.featured_image_url === null
-                                                ? null
-                                                : current.featured_image_caption,
-                                        lock_version: response.lock_version,
-                                        updated_at: response.updated_at,
-                                    }));
-                                }}
-                            />
-                            {assistant.suggestions.featured_image_alt && (
-                                <div className="grid gap-1">
-                                    <p className="text-xs font-medium text-muted-foreground">
-                                        Suggested image alt text
-                                    </p>
-                                    <FieldSuggestionChip
-                                        change={
-                                            assistant.suggestions
-                                                .featured_image_alt
-                                        }
-                                        busy={assistant.isDeciding(
-                                            assistant.suggestions
-                                                .featured_image_alt.id,
-                                        )}
-                                        error={assistant.decisionError(
-                                            assistant.suggestions
-                                                .featured_image_alt.id,
-                                        )}
-                                        onAccept={assistant.accept}
-                                        onReject={assistant.reject}
-                                    />
-                                </div>
-                            )}
-                            {assistant.suggestions.featured_image_caption && (
-                                <div className="grid gap-1">
-                                    <p className="text-xs font-medium text-muted-foreground">
-                                        Suggested image caption
-                                    </p>
-                                    <FieldSuggestionChip
-                                        change={
-                                            assistant.suggestions
-                                                .featured_image_caption
-                                        }
-                                        busy={assistant.isDeciding(
-                                            assistant.suggestions
-                                                .featured_image_caption.id,
-                                        )}
-                                        error={assistant.decisionError(
-                                            assistant.suggestions
-                                                .featured_image_caption.id,
-                                        )}
-                                        onAccept={assistant.accept}
-                                        onReject={assistant.reject}
-                                    />
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    <Button asChild variant="outline">
-                        <Link href={revisionsIndex(post.id)}>
-                            <History />
-                            Revision history
-                        </Link>
-                    </Button>
-                </aside>
-            </div>
+                        <Button asChild variant="outline">
+                            <Link href={revisionsIndex(post.id)}>
+                                <History />
+                                Revision history
+                            </Link>
+                        </Button>
+                    </aside>
+                </div>
+            )}
 
             <AssistantPanel
                 open={assistantOpen}

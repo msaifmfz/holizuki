@@ -6,11 +6,11 @@ namespace App\Http\Admin\Controllers;
 
 use App\Domain\Publishing\Actions\StoreOgImage;
 use App\Domain\Publishing\Models\Post;
-use App\Domain\Reading\Support\Seo;
 use App\Http\Admin\Requests\PostLockVersionRequest;
 use App\Http\Admin\Requests\StoreOgImageRequest;
 use App\Http\Controller;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Storage;
 
 class PostOgImageController extends Controller
 {
@@ -24,9 +24,10 @@ class PostOgImageController extends Controller
             $image,
             $request->integer('lock_version'),
         );
+        $draft = $updatedPost->draft()->firstOrFail();
 
         return response()->json([
-            'og_image_url' => Seo::postOgImageUrl($updatedPost),
+            'og_image_url' => Storage::disk('public')->url((string) $draft->og_image_path),
             'lock_version' => $updatedPost->lock_version,
             'updated_at' => $updatedPost->updated_at?->toISOString(),
         ]);

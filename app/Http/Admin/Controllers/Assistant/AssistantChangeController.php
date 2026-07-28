@@ -12,7 +12,7 @@ use App\Domain\Assistant\Models\AssistantChange;
 use App\Domain\Assistant\Models\AssistantSession;
 use App\Domain\Assistant\Models\AssistantTurn;
 use App\Domain\Identity\Models\User;
-use App\Domain\Publishing\Actions\SavePost;
+use App\Domain\Publishing\Actions\SavePostDraft;
 use App\Domain\Publishing\Models\Post;
 use App\Domain\Publishing\ValueObjects\RichTextDocument;
 use App\Http\Admin\Concerns\BuildsAutosaveResponse;
@@ -25,8 +25,8 @@ use LogicException;
 
 /**
  * Applies or discards one AI proposal. Accepting re-resolves the change
- * against the post's current state and persists it through the same SavePost
- * pipeline (and lock_version discipline) as a manual save.
+ * against the post's current state and persists it through the same
+ * SavePostDraft pipeline (and lock_version discipline) as a manual save.
  */
 class AssistantChangeController extends Controller
 {
@@ -34,7 +34,7 @@ class AssistantChangeController extends Controller
 
     public function __construct(
         private readonly ResolveChangePayload $resolvePayload,
-        private readonly SavePost $savePost,
+        private readonly SavePostDraft $savePost,
     ) {}
 
     public function accept(ChangeDecisionRequest $request, Post $post, AssistantChange $change): JsonResponse
@@ -57,25 +57,27 @@ class AssistantChangeController extends Controller
             throw new LogicException('An accepted assistant change must return the saved post.');
         }
 
+        $draft = $saved->draft()->with('tags:id,name')->firstOrFail();
+
         return response()->json([
             'change' => $this->assistantChangeData($decidedChange),
             'post' => [
                 ...$this->autosavePayload($saved),
-                'title' => $saved->title,
-                'slug_is_manual' => $saved->slug_is_manual,
-                'excerpt' => $saved->excerpt,
-                'category_id' => $saved->category_id,
-                'author_id' => $saved->author_id,
-                'seo_title' => $saved->seo_title,
-                'meta_description' => $saved->meta_description,
-                'canonical_url' => $saved->canonical_url,
-                'og_title' => $saved->og_title,
-                'og_description' => $saved->og_description,
-                'noindex' => $saved->noindex,
-                'featured_image_alt' => $saved->featured_image_alt,
-                'featured_image_caption' => $saved->featured_image_caption,
-                'tags' => $saved->tags()->pluck('name')->values()->all(),
-                'body' => $saved->body instanceof RichTextDocument ? $saved->body->toArray() : null,
+                'title' => $draft->title,
+                'slug_is_manual' => $draft->slug_is_manual,
+                'excerpt' => $draft->excerpt,
+                'category_id' => $draft->category_id,
+                'author_id' => $draft->author_id,
+                'seo_title' => $draft->seo_title,
+                'meta_description' => $draft->meta_description,
+                'canonical_url' => $draft->canonical_url,
+                'og_title' => $draft->og_title,
+                'og_description' => $draft->og_description,
+                'noindex' => $draft->noindex,
+                'featured_image_alt' => $draft->featured_image_alt,
+                'featured_image_caption' => $draft->featured_image_caption,
+                'tags' => $draft->tags->pluck('name')->values()->all(),
+                'body' => $draft->body instanceof RichTextDocument ? $draft->body->toArray() : null,
             ],
         ]);
     }

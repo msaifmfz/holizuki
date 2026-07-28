@@ -26,7 +26,8 @@ class DatabaseSeeder extends Seeder
         $user = User::query()->firstOrNew(['email' => 'test@example.com']);
 
         if (! $user->exists) {
-            $user->forceFill(User::factory()->raw(['email' => 'test@example.com']));
+            $generatedUser = User::factory()->make(['email' => 'test@example.com']);
+            $user->forceFill($generatedUser->getAttributes());
         }
 
         $user->forceFill([

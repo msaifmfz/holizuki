@@ -41,7 +41,7 @@ class PostViewController extends Controller
             return $this->redirectFromOldSlug($slug);
         }
 
-        $reader = $buildReaderDocument->handle($post);
+        $reader = $buildReaderDocument->forReaders($post);
         $related = collect($this->relatedPosts($post))
             ->map(fn (Post $relatedPost): array => $this->postCards->card($relatedPost));
         $previous = $this->previousPost($post);
@@ -59,6 +59,7 @@ class PostViewController extends Controller
                 'seo_title' => $post->seo_title,
                 'excerpt' => $post->excerpt,
                 'body' => $reader['document'],
+                'citations' => $reader['citations'],
                 'featured_image_url' => $imageUrl,
                 'featured_image_alt' => $post->featured_image_alt,
                 'featured_image_caption' => $post->featured_image_caption,

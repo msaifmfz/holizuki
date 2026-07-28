@@ -9,7 +9,9 @@ use App\Domain\Assistant\Models\AssistantSession;
 use App\Domain\Assistant\Models\AssistantTurn;
 use App\Domain\Assistant\Prompts\SystemPromptBuilder;
 use App\Domain\Assistant\ValueObjects\AgentRequest;
+use App\Domain\Publishing\Enums\AuthoringPersonality;
 use App\Domain\Publishing\Models\Post;
+use App\Domain\Publishing\Models\PostAuthoringJourney;
 use Illuminate\Support\Str;
 
 /**
@@ -43,9 +45,13 @@ final readonly class AgentRequestFactory
             model: $taskType->model(),
             sessionId: $sessionId,
             resume: $resume,
-            systemPrompt: $this->systemPrompt->build($workspacePath),
-            allowedTools: $this->toolRules($taskType, $runDirectory),
-            disallowedTools: $this->configuredTools('disallowed_tools'),
+            systemPrompt: $this->systemPrompt->build(
+                $workspacePath,
+                $this->authoringStyle($post),
+            ),
+            enabledTools: $this->enabledTools($taskType, $turn),
+            allowedToolRules: $this->allowedToolRules($taskType, $turn, $runDirectory),
+            disallowedTools: $this->disallowedTools($taskType, $turn),
             maxTurns: $taskType->maxTurns(),
             timeout: config()->integer('assistant.turn_timeout', 300),
             startupTimeout: config()->integer('assistant.startup_timeout', 30),
@@ -86,13 +92,48 @@ final readonly class AgentRequestFactory
     }
 
     /** @return list<string> */
-    private function toolRules(AssistantTaskType $taskType, string $runDirectory): array
+    private function enabledTools(AssistantTaskType $taskType, AssistantTurn $turn): array
     {
+        $tools = match ($taskType) {
+            AssistantTaskType::Transform, AssistantTaskType::Metadata, AssistantTaskType::Images => [
+                'Read',
+                'Edit',
+            ],
+            AssistantTaskType::Chat, AssistantTaskType::Outline => [
+                'Read',
+                'Edit',
+                'Write',
+            ],
+            AssistantTaskType::Plans, AssistantTaskType::Draft => [
+                'Read',
+                'Edit',
+            ],
+            AssistantTaskType::Research => [
+                'Read',
+                'Edit',
+                'WebSearch',
+            ],
+        };
+
+        if ($this->webFetchDomains($taskType, $turn) !== []) {
+            $tools[] = 'WebFetch';
+        }
+
+        return $tools;
+    }
+
+    /** @return list<string> */
+    private function allowedToolRules(
+        AssistantTaskType $taskType,
+        AssistantTurn $turn,
+        string $runDirectory,
+    ): array {
         $draft = $runDirectory.'/draft.md';
         $metadata = $runDirectory.'/meta.json';
         $outline = $runDirectory.'/outline.md';
+        $output = $runDirectory.'/authoring-output.json';
 
-        return match ($taskType) {
+        $rules = match ($taskType) {
             AssistantTaskType::Transform => [
                 "Read({$draft})",
                 "Edit({$draft})",
@@ -112,8 +153,122 @@ final readonly class AgentRequestFactory
                 "Edit({$draft})",
                 "Edit({$metadata})",
                 "Edit({$outline})",
-                "Write({$outline})",
+            ],
+            AssistantTaskType::Plans, AssistantTaskType::Draft => [
+                "Read({$runDirectory}/**)",
+                "Edit({$output})",
+            ],
+            AssistantTaskType::Research => [
+                "Read({$runDirectory}/**)",
+                "Edit({$output})",
+                'WebSearch',
             ],
         };
+
+        foreach ($this->webFetchDomains($taskType, $turn) as $domain) {
+            $rules[] = "WebFetch(domain:{$domain})";
+        }
+
+        return $rules;
+    }
+
+    /** @return list<string> */
+    private function disallowedTools(AssistantTaskType $taskType, AssistantTurn $turn): array
+    {
+        $allowedExternalTools = [];
+
+        if ($taskType === AssistantTaskType::Research) {
+            $allowedExternalTools[] = 'WebSearch';
+        }
+
+        if ($this->webFetchDomains($taskType, $turn) !== []) {
+            $allowedExternalTools[] = 'WebFetch';
+        }
+
+        return array_values(array_diff(
+            $this->configuredTools('disallowed_tools'),
+            $allowedExternalTools,
+        ));
+    }
+
+    /**
+     * Domains the agent may fetch for this turn, or none.
+     *
+     * Only the guided authoring prompts tell the agent to read approved URL
+     * sources, so only they get network access — and then just for the exact
+     * hosts the author approved. The legacy editing task types stay offline
+     * even if a turn context ever starts carrying source domains.
+     *
+     * SafeExternalSourceUrl screens those hosts when the author adds them, but
+     * it cannot bind the DNS resolution the CLI performs at fetch time. Keeping
+     * this list to approved hosts on prompts that need them is the mitigation.
+     *
+     * @return list<string>
+     */
+    private function webFetchDomains(AssistantTaskType $taskType, AssistantTurn $turn): array
+    {
+        return match ($taskType) {
+            AssistantTaskType::Plans,
+            AssistantTaskType::Draft,
+            AssistantTaskType::Research => $this->sourceDomains($turn),
+            AssistantTaskType::Chat,
+            AssistantTaskType::Outline,
+            AssistantTaskType::Transform,
+            AssistantTaskType::Metadata,
+            AssistantTaskType::Images => [],
+        };
+    }
+
+    /** @return list<string> */
+    private function sourceDomains(AssistantTurn $turn): array
+    {
+        $domains = ($turn->context ?? [])['source_domains'] ?? [];
+
+        if (! is_array($domains)) {
+            return [];
+        }
+
+        $safeDomains = [];
+
+        foreach ($domains as $domain) {
+            if (
+                is_string($domain)
+                && Str::isMatch('/\A[a-z0-9.-]+\z/', $domain)
+                && ! Str::contains($domain, '..')
+                && ! Str::startsWith($domain, '.')
+                && ! Str::endsWith($domain, '.')
+            ) {
+                $safeDomains[] = Str::lower($domain);
+            }
+        }
+
+        return array_values(array_unique($safeDomains));
+    }
+
+    private function authoringStyle(Post $post): string
+    {
+        $journey = PostAuthoringJourney::query()->whereBelongsTo($post)->first();
+        $personality = $journey === null
+            ? AuthoringPersonality::Friendly
+            : $journey->personality;
+
+        return match ($personality) {
+            AuthoringPersonality::Friendly => 'Use a warm, encouraging voice with plain language and helpful explanations.',
+            AuthoringPersonality::Professional => 'Use a clear, polished, credible voice with precise language and restrained phrasing.',
+            AuthoringPersonality::Creative => 'Use an expressive, curious voice with vivid but accurate language and fresh structure.',
+            AuthoringPersonality::Custom => $this->customAuthoringStyle($journey?->custom_instructions),
+        };
+    }
+
+    private function customAuthoringStyle(?string $instructions): string
+    {
+        if ($instructions === null || trim($instructions) === '') {
+            return 'Use a clear voice and follow the author’s explicit requests in each message.';
+        }
+
+        return 'The author’s custom style instructions, encoded as a JSON string, are: '.json_encode(
+            $instructions,
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+        );
     }
 }

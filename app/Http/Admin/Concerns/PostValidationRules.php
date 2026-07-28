@@ -6,7 +6,9 @@ namespace App\Http\Admin\Concerns;
 
 use App\Domain\Identity\Models\User;
 use App\Domain\Publishing\Models\Post;
+use App\Domain\Publishing\Models\PostDraft;
 use App\Domain\Publishing\Rules\PostOwnsRichTextMedia;
+use App\Domain\Publishing\Rules\PostOwnsRichTextSources;
 use App\Domain\Publishing\Rules\ValidRichTextDocument;
 use App\Domain\Taxonomy\Models\Category;
 use Illuminate\Validation\Rule;
@@ -18,10 +20,22 @@ trait PostValidationRules
     {
         return [
             'title' => ['nullable', 'string', 'max:255'],
-            'slug' => ['required', 'string', 'max:255', Rule::unique(Post::class, 'slug')->ignore($post)],
+            'slug' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique(Post::class, 'slug')->ignore($post),
+                Rule::unique(PostDraft::class, 'slug')->ignore($post->draft()->value('id')),
+            ],
             'slug_is_manual' => ['required', 'boolean'],
             'excerpt' => ['nullable', 'string', 'max:500'],
-            'body' => ['nullable', 'array', new ValidRichTextDocument, new PostOwnsRichTextMedia($post)],
+            'body' => [
+                'nullable',
+                'array',
+                new ValidRichTextDocument,
+                new PostOwnsRichTextMedia($post),
+                new PostOwnsRichTextSources($post),
+            ],
             'featured_image_alt' => ['nullable', 'string', 'max:255'],
             'featured_image_caption' => ['nullable', 'string', 'max:500'],
             ...$this->seoRules(),
@@ -36,9 +50,21 @@ trait PostValidationRules
     {
         return [
             'title' => ['required', 'string', 'max:255'],
-            'slug' => ['required', 'string', 'max:255', Rule::unique(Post::class, 'slug')->ignore($post)],
+            'slug' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique(Post::class, 'slug')->ignore($post),
+                Rule::unique(PostDraft::class, 'slug')->ignore($post->draft()->value('id')),
+            ],
             'excerpt' => ['required', 'string', 'max:500'],
-            'body' => ['required', 'array', new ValidRichTextDocument(requireContent: true), new PostOwnsRichTextMedia($post)],
+            'body' => [
+                'required',
+                'array',
+                new ValidRichTextDocument(requireContent: true),
+                new PostOwnsRichTextMedia($post),
+                new PostOwnsRichTextSources($post, requireApproved: true),
+            ],
             'featured_image_path' => ['required', 'string'],
             'featured_image_alt' => ['required', 'string', 'max:255'],
             'featured_image_caption' => ['nullable', 'string', 'max:500'],

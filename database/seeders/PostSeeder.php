@@ -5,11 +5,15 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Domain\Identity\Models\User;
+use App\Domain\Publishing\Actions\CreatePostRevision;
 use App\Domain\Publishing\Actions\RebuildPostMetadata;
+use App\Domain\Publishing\Enums\PostRevisionEvent;
 use App\Domain\Publishing\Enums\PostStatus;
 use App\Domain\Publishing\Models\Post;
+use App\Domain\Publishing\Models\PostDraft;
 use App\Domain\Taxonomy\Models\Category;
 use App\Domain\Taxonomy\Models\Tag;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -48,24 +52,30 @@ class PostSeeder extends Seeder
         'off season', 'family run', 'first timers',
     ];
 
-    public function run(RebuildPostMetadata $rebuildPostMetadata): void
-    {
+    public function run(
+        RebuildPostMetadata $rebuildPostMetadata,
+        CreatePostRevision $createPostRevision,
+    ): void {
         $author = User::query()->whereNotNull('author_slug')->first()
             ?? User::factory()->create(['author_slug' => 'test-user']);
 
-        $categories = collect(self::CATEGORIES)->mapWithKeys(fn (array $category): array => [
-            $category['name'] => Category::query()->firstOrCreate(
+        $categories = [];
+
+        foreach (self::CATEGORIES as $category) {
+            $categories[$category['name']] = Category::query()->firstOrCreate(
                 ['slug' => Str::slug($category['name'])],
                 ['name' => $category['name'], 'description' => $category['description']],
-            ),
-        ]);
+            );
+        }
 
-        $tags = collect(self::TAGS)->mapWithKeys(fn (string $tag): array => [
-            $tag => Tag::query()->firstOrCreate(
+        $tags = [];
+
+        foreach (self::TAGS as $tag) {
+            $tags[$tag] = Tag::query()->firstOrCreate(
                 ['slug' => Str::slug($tag)],
                 ['name' => $tag],
-            ),
-        ]);
+            );
+        }
 
         $images = $this->availableImages();
 
@@ -91,9 +101,43 @@ class PostSeeder extends Seeder
                 ],
             );
 
-            $post->tags()->sync(
-                collect($definition['tags'])->map(fn (string $tag): int => $tags[$tag]->id)->all(),
-            );
+            $tagIds = [];
+
+            foreach ($definition['tags'] as $tag) {
+                $tagIds[] = $tags[$tag]->id;
+            }
+
+            $post->tags()->sync($tagIds);
+            $draft = $post->draft()->firstOrCreate([], PostDraft::initialAttributes($post));
+            $draft->forceFill(PostDraft::initialAttributes($post))->save();
+            $draft->tags()->sync($tagIds);
+
+            if ($post->scheduled_at !== null) {
+                $scheduledRevision = $post->scheduledRevision()->first();
+
+                if ($scheduledRevision === null) {
+                    $scheduledRevision = $createPostRevision->handle(
+                        $post,
+                        editor: null,
+                        event: PostRevisionEvent::Scheduled,
+                        snapshot: $draft->snapshot(),
+                    );
+                } else {
+                    $scheduledRevision->forceFill([
+                        'editor_id' => null,
+                        'event' => PostRevisionEvent::Scheduled,
+                        'snapshot' => $draft->snapshot(),
+                    ])->save();
+                }
+
+                Post::withoutTimestamps(function () use ($post, $scheduledRevision): void {
+                    $post->forceFill(['scheduled_revision_id' => $scheduledRevision->id])->saveQuietly();
+                });
+            } elseif ($post->scheduled_revision_id !== null) {
+                Post::withoutTimestamps(function () use ($post): void {
+                    $post->forceFill(['scheduled_revision_id' => null])->saveQuietly();
+                });
+            }
 
             $rebuildPostMetadata->handle($post->unsetRelations());
         }
@@ -111,18 +155,41 @@ class PostSeeder extends Seeder
      */
     private function availableImages(): array
     {
-        return collect(Storage::disk('public')->allFiles('posts'))
-            ->filter(fn (string $path): bool => in_array(
+        $images = [];
+
+        foreach (Storage::disk('public')->allFiles('posts') as $path) {
+            if (! is_string($path)) {
+                continue;
+            }
+
+            if (in_array(
                 strtolower(pathinfo($path, PATHINFO_EXTENSION)),
                 ['jpg', 'jpeg', 'png', 'webp', 'avif'],
                 true,
-            ))
-            ->values()
-            ->all();
+            )) {
+                $images[] = $path;
+            }
+        }
+
+        return $images;
     }
 
     /**
-     * @return list<array<string, mixed>>
+     * @return list<array{
+     *     title: string,
+     *     slug: string,
+     *     category: string,
+     *     tags: list<string>,
+     *     excerpt: string,
+     *     image_alt: string,
+     *     image_caption?: string,
+     *     status: PostStatus,
+     *     published_at?: CarbonInterface,
+     *     content_updated_at?: CarbonInterface,
+     *     scheduled_at?: CarbonInterface,
+     *     featured_at?: CarbonInterface,
+     *     body: array<string, mixed>
+     * }>
      */
     private function posts(): array
     {

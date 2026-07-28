@@ -3,6 +3,14 @@ import type { JSONContent } from '@tiptap/react';
 type PostDisplayStatus = 'draft' | 'scheduled' | 'published' | 'trashed';
 export type RichTextDocument = JSONContent;
 
+export type CitationSource = {
+    number: number;
+    source_id: number;
+    title: string;
+    kind: 'note' | 'url' | 'document';
+    url: string | null;
+};
+
 export type PostSummary = {
     id: number;
     title: string;
@@ -45,6 +53,7 @@ export type PostPreviewData = {
     title: string;
     excerpt: string | null;
     body: RichTextDocument | null;
+    citations: CitationSource[];
     featured_image_url: string | null;
     featured_image_alt: string | null;
     featured_image_caption: string | null;
