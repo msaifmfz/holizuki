@@ -216,6 +216,8 @@ Then create each application runtime secret. `DB_PASSWORD` must duplicate the co
 ```text
 APP_KEY=base64:replace-me
 DB_PASSWORD=replace-with-the-matching-database-password
+COMMUNITY_EMAIL_HASH_KEY=replace-with-a-stable-random-secret
+PASSKEYS_USER_HANDLE_SECRET=replace-with-a-different-stable-random-secret
 MAIL_MAILER=log
 ```
 
@@ -232,6 +234,14 @@ sudo shred --remove /root/staging-runtime.env
 ```
 
 Environment variables are read when a pod starts. Rotate the CloudNativePG and matching runtime-secret password together. Then restart the single `holizuki-web` Deployment in that environment and wait for its rollout; its pod contains the web, worker, and scheduler containers.
+
+Keep `COMMUNITY_EMAIL_HASH_KEY` and `PASSKEYS_USER_HANDLE_SECRET` stable and
+independent from `APP_KEY`. `APP_PREVIOUS_KEYS` can keep Laravel-encrypted
+values readable during an application-key rotation, but it does not preserve
+HMAC-derived community lookups, reader-view hashes, or passkey user handles.
+Treat any change to these derivation keys as a planned data migration. Runtime
+Secret changes do not automatically alter the current pod environment; restart
+and verify the Deployment after every rotation.
 
 The AI writing assistant uses a dedicated inference-only OAuth token. On a trusted workstation, run `claude setup-token`. For each environment, paste the generated token into a temporary root-owned file with this shape:
 
@@ -264,6 +274,33 @@ for namespace in production staging; do
   sudo kubectl -n "$namespace" rollout status deployment/holizuki-web --timeout=10m
 done
 ```
+
+Google Analytics reporting is optional and disabled by default. To enable it
+for an environment, add these values to that environment's runtime Secret, not
+to committed Helm values:
+
+```text
+ANALYTICS_COLLECTION_ENABLED=true
+ANALYTICS_DASHBOARD_ENABLED=true
+ANALYTICS_MEASUREMENT_ID=G-REPLACE-ME
+ANALYTICS_PROPERTY_ID=replace-me
+ANALYTICS_STREAM_ID=replace-me
+ANALYTICS_SERVICE_ACCOUNT_BASE64=replace-with-base64-json
+ANALYTICS_CONSENT_VERSION=replace-with-current-consent-version
+```
+
+Keep non-production collection disabled unless synthetic staging traffic is an
+intentional test. Restart the Deployment after updating the Secret, then verify
+read-only configuration and access:
+
+```bash
+kubectl -n production exec deployment/holizuki-web -c web -- \
+  php artisan analytics:health --no-interaction
+```
+
+`analytics:reconcile` mutates application-owned Google Analytics configuration
+and URL aliases. Run it only after reviewing its help/output and the target
+property, then begin syncs with `analytics:sync-recent`.
 
 Protect staging with Traefik basic authentication:
 

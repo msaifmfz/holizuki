@@ -63,6 +63,14 @@ Back up these paths to a separate provider/account with an encrypted tool such a
 - an encrypted export of the runtime, backup, TLS, and deployment-token secrets
 - `/srv/holizuki/config` and `/srv/holizuki/history`
 
+Despite the directory name, each environment's `uploads` path backs the whole
+`/app/storage/app` volume. It contains public post media, private source
+documents, assistant workspaces, and the Claude home/transcript data. Encrypt
+the off-server backup, restrict restore/read credentials, and include private
+source/assistant access checks in restore drills. Do not exclude paths as
+"non-upload data" unless the application first moves them to a separately
+managed disk/PVC with its own documented recovery policy.
+
 Do not copy the live PostgreSQL data directory as a database backup. CloudNativePG base backups and WAL archives are the supported database recovery source.
 
 Run off-server backups after the nightly database base backup, retain daily/weekly/monthly copies according to business requirements, and monitor the backup command's exit status. The K3s snapshots are created locally every six hours by the supplied K3s configuration; the off-server job must copy them before a disk failure can destroy them.

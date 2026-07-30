@@ -71,6 +71,20 @@ The production GitHub environment should require approval. The workflow fails cl
 
 Database migrations are not automatically reversed. Every production migration must use an expand-and-contract sequence so the old and new application versions can run against the schema during rollout and rollback.
 
+## First administrator
+
+Setup and deployment do not seed data or create an administrator. After the
+first successful deployment, create the initial verified administrator from a
+trusted administrative shell:
+
+```bash
+kubectl -n production exec -it deployment/holizuki-web -c web -- php artisan user:create
+```
+
+The command is interactive; do not pass `--no-interaction`. Never run
+`db:seed` in production—the seeder contains known local credentials and
+curated post data.
+
 ## Manual inspection and rollback
 
 ```bash

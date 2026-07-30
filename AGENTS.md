@@ -56,17 +56,28 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 The backend is organized into bounded contexts under `app/Domain/` with an HTTP layer split by portal — `tests/ArchitectureTest.php` enforces the dependency rules:
 
 - `app/Domain/Publishing/` — the Post aggregate (models, actions, events, listeners, enums, rules, policies, queries, value objects, casts, console commands). Post state transitions (`publish`, `schedule`, `unpublish`, `moveToTrash`, `feature`, `unfeature`) live on the `Post` model; actions orchestrate transactions, optimistic locking, revisions, and event dispatch.
-- `app/Domain/Taxonomy/` — categories and tags; may use `Publishing\Models` only.
+- `app/Domain/Taxonomy/` — categories and tags; may use Identity models and `Publishing\Models` only.
 - `app/Domain/Reading/` — the public read side (post views, public cache, SEO support, reader documents, card/popular queries); may read Publishing/Taxonomy/Identity models but never writes them.
 - `app/Domain/Inbox/` — contact submissions.
 - `app/Domain/Identity/` — users, roles, auth actions; depends on no other context.
-- `app/Domain/Assistant/` — the AI co-writer (headless Claude Code CLI, per-post workspaces, streamed turns, reviewable change proposals). Reads Publishing/Taxonomy *models, markdown, and rules* but never their write paths (Actions/Console/Listeners/Policies/Providers); no other context depends on it. Turn persistence happens through the `AssistantChange` → `SavePost` accept pipeline in `app/Http/Admin/Controllers/Assistant/`, not from the domain layer.
-- `app/Http/{Admin,Public,Settings}/` — controllers/requests per portal; shared base classes and middleware sit at the `app/Http/` root.
+- `app/Domain/Community/` — verified-reader comments, moderation, newsletter double opt-in, consent, and retention; depends only on Publishing and Identity.
+- `app/Domain/Analytics/` — Google Analytics gateways, local aggregates, URL aliases, sync operations, insights, milestones, and author motivation. May observe Publishing models/events and immutable Community events, but never calls another context's actions.
+- `app/Domain/Assistant/` — the AI co-writer (headless Claude Code CLI, per-post workspaces, streamed turns, reviewable change proposals, and queued guided-authoring artifacts). Reads permitted Publishing/Taxonomy paths but never their write paths; no other context depends on it. Accepted work passes through the HTTP-layer `AssistantChange` → `SavePostDraft` pipeline, not a direct domain write.
+- `app/Http/{Admin,Public,Settings,Auth}/` — controllers, requests, responses, and support per portal/auth surface; shared base classes and middleware sit at the `app/Http/` root.
 - `app/Support/` — context-free shared kernel (`DbExpressions`, `ResolvesUniqueSlug`, `Slug`).
 
-Cross-context reactions go through domain events (e.g. `PostPublished` → `Reading\Listeners\FlushPublicCache`; `CategorySaved`/`AuthorProfileUpdated` → Publishing metadata rebuild listeners), registered explicitly in `PublishingServiceProvider` and `ReadingServiceProvider`. Never call another context's actions or support classes from inside a domain context.
+Cross-context reactions go through domain events (e.g. `PostPublished` → `Reading\Listeners\FlushPublicCache`; `CategorySaved`/`AuthorProfileUpdated` → Publishing metadata rebuild listeners; Publishing/Community events → Analytics projections and milestones), registered explicitly in the reacting service provider. Never call another context's actions or support classes from inside a domain context.
 
 Because models are no longer in `App\Models`, `php artisan make:model|controller|policy` targets dead paths — create files manually following siblings. Each model pairs an explicit `newFactory()` override with a `protected $model` property on its factory, and policies attach via `#[UsePolicy]`. Feature tests mirror the contexts (`tests/Feature/<Context>/`).
+
+### Repository documentation
+
+- `docs/README.md` is the canonical documentation index.
+- Read `docs/architecture.md` before changing a bounded context, portal, event, queue, or critical flow.
+- Read and update `docs/database-erd.md` for migrations, relationships, constraints, or retention changes.
+- `docs/development.md` maps local processes, schedules, tests, CI, and runtime handoffs.
+- `docs/llm-guide.md` is the task-to-code map for coding agents.
+- Read `docs/known-issues.md` before persistence, queue, SSR, health, or deployment work; it records verified open gaps.
 
 ## Frontend Bundling
 

@@ -124,3 +124,10 @@ bash .github/scripts/test-container.sh holizuki:local
 ```
 
 Deployment and recovery runbooks live in `docs/deployment`.
+
+## Repository documentation
+
+Start with [`docs/README.md`](docs/README.md) for the maintainership
+documentation index. It links the system architecture, database ERD/data
+dictionary, development and operations guide, LLM contributor map, verified
+known issues, and deployment/recovery runbooks.
